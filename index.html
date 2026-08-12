@@ -325,7 +325,7 @@ let DB = {itens:[], lotes:[], movs:[]};
 let filtro = {saida:{cat:'',}, entrada:{cat:''}, itens:{cat:''}, validade:{cat:''}};
 let pendentes = {saida:{}, entrada:{}};
 let telaAtual = 'painel';
-const CHAVE = 'estoque:debora:v2';
+const CHAVE = 'estoque:debora:v3';
 let modoArmazenamento = 'memoria'; // 'claude' | 'local' | 'memoria'
 
 const SHEETS_APP_URL = 'https://script.google.com/macros/s/AKfycbyaGldiTMLxJvbU8_9sTxJCON-2K4tvVzH7t0Ie6Hf2pDfuwd49a6YrVEpnPAMqZWcC/exec';
@@ -397,12 +397,10 @@ async function salvar(){
   }
 }
 function semearCatalogo(){
+  // Catálogo entra zerado: o saldo passa a ser construído só pelos
+  // recebimentos e retiradas lançados no sistema, que já vão para o Sheets.
   CATALOGO.forEach(c=>{
-    const it = {id:id(), nome:c.nome, cat:c.cat, un:c.un, min:0};
-    DB.itens.push(it);
-    if(c.saldo > 0){
-      DB.lotes.push({id:id(), itemId:it.id, marca:'', validade:'', qtd:c.saldo, entrada:hoje(), forn:'', origemPlanilha:true});
-    }
+    DB.itens.push({id:id(), nome:c.nome, cat:c.cat, un:c.un, min:0});
   });
 }
 
