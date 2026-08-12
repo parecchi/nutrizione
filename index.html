@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Estoque — Debora Abitante</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Roboto+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1F2B25; --paper:#F1F4EC; --surface:#FFF;
+    --verde:#4C7C4B; --verde-suave:#E4EDDD;
+    --sinal:#DFA13C; --frio:#3B7392; --alerta:#A83C4B; --ok:#4C7C4B;
+    --linha:rgba(31,43,37,.15); --sub:rgba(31,43,37,.6); --r:6px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:'Source Sans 3',system-ui,sans-serif;font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:'Archivo',sans-serif;letter-spacing:-.01em;margin:0}
+  .num{font-family:'Roboto Mono',monospace;font-variant-numeric:tabular-nums}
+  .faixa{height:7px;background:var(--verde)}
+  .wrap{max-width:1060px;margin:0 auto}
+
+  header{background:var(--surface);padding:18px 16px 14px;border-bottom:1px solid var(--linha)}
+  header .eyebrow{font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--verde);margin-bottom:6px}
+  header h1{font-size:27px;font-weight:600;line-height:1.05}
+  header .sub{font-size:14px;color:var(--sub);margin-top:5px}
+  .sync-badge{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px;
+    font-family:'Roboto Mono',monospace;color:var(--sub);text-decoration:none;
+    border:1px solid var(--linha);border-radius:20px;padding:4px 11px}
+  .sync-badge b{color:var(--sub)}
+  .sync-badge[data-status="ok"] b{color:var(--verde)}
+  .sync-badge[data-status="erro"] b{color:var(--alerta)}
+  .sync-badge:hover{border-color:var(--verde)}
+
+  nav{background:var(--surface);border-bottom:2px solid var(--ink);position:sticky;top:0;z-index:30}
+  nav .wrap{display:flex;overflow-x:auto;scrollbar-width:none}
+  nav .wrap::-webkit-scrollbar{display:none}
+  nav button{flex:0 0 auto;background:none;border:0;border-bottom:3px solid transparent;color:var(--sub);padding:11px 14px;cursor:pointer;margin-bottom:-2px;font-family:'Archivo',sans-serif;font-size:15px;font-weight:500}
+  nav button[aria-selected="true"]{color:var(--verde);border-bottom-color:var(--verde);font-weight:600}
+  nav button:focus-visible{outline:2px solid var(--frio);outline-offset:-4px}
+
+  main{max-width:1060px;margin:0 auto;padding:18px 16px 120px}
+  section[hidden]{display:none}
+  .card{background:var(--surface);border:1px solid var(--linha);border-radius:var(--r);padding:16px;margin-bottom:14px}
+  .card>h2{font-size:19px;font-weight:600}
+  .hint{color:var(--sub);font-size:13.5px;margin:2px 0 14px}
+
+  /* resumo em formato de rótulo nutricional */
+  .kpis{background:var(--surface);border:2px solid var(--ink);border-radius:var(--r);padding:0 16px 6px;margin-bottom:16px}
+  .kpis::before{content:'Resumo do estoque';display:block;font-family:'Archivo',sans-serif;font-weight:700;font-size:20px;padding:12px 0 8px;border-bottom:7px solid var(--ink)}
+  .kpi{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--linha)}
+  .kpi:first-of-type{border-bottom-width:3px;border-bottom-color:var(--ink)}
+  .kpi:last-child{border-bottom:0}
+  .kpi .n{font-family:'Roboto Mono',monospace;font-size:21px;font-weight:600;line-height:1}
+  .kpi .l{font-size:15px;font-weight:500}
+  .kpi.vencido .n{color:var(--alerta)} .kpi.vencendo .n{color:var(--sinal)} .kpi.baixo .n{color:var(--frio)}
+
+  label{display:block;font-size:13px;color:var(--sub);margin-bottom:4px;font-weight:600}
+  input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--linha);border-radius:var(--r);background:#fff;font-family:inherit;font-size:15px;color:var(--ink)}
+  input:focus,select:focus{outline:2px solid var(--frio);outline-offset:1px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .acoes{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+
+  button.btn{font-family:'Archivo',sans-serif;font-size:15px;font-weight:600;padding:10px 18px;border-radius:var(--r);cursor:pointer;border:1px solid var(--ink);background:transparent;color:var(--ink)}
+  .btn.primary{background:var(--verde);border-color:var(--verde);color:#fff}
+  .btn.small{font-size:13px;padding:5px 10px}
+  .btn:hover{filter:brightness(.94)} .btn:focus-visible{outline:2px solid var(--frio);outline-offset:2px}
+
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+  .chip{border:1px solid var(--linha);background:#fff;border-radius:20px;padding:5px 12px;font-size:13.5px;cursor:pointer;font-family:inherit;color:var(--ink)}
+  .chip[aria-pressed="true"]{background:var(--verde);border-color:var(--verde);color:#fff;font-weight:600}
+  .chip:focus-visible{outline:2px solid var(--frio);outline-offset:2px}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-family:'Archivo',sans-serif;text-transform:uppercase;font-size:12px;letter-spacing:.06em;color:var(--sub);border-bottom:2px solid var(--ink);padding:6px 8px;white-space:nowrap}
+  td{border-bottom:1px solid var(--linha);padding:7px 8px;vertical-align:middle}
+  td.num,th.num{text-align:right;font-family:'Roboto Mono',monospace}
+  .tbl-scroll{overflow-x:auto}
+
+  .linhaitem{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--linha)}
+  .linhaitem .nome{flex:1 1 auto;min-width:0}
+  .linhaitem .nome b{font-weight:600}
+  .linhaitem .saldo{font-family:'Roboto Mono',monospace;font-size:12.5px;color:var(--sub);display:block}
+  .linhaitem input{width:88px;text-align:right}
+  .linhaitem .extra{display:flex;gap:6px}
+  .linhaitem .extra input{width:110px;text-align:left}
+  .linhaitem.preenchido{background:var(--verde-suave)}
+
+  .cab-entrada{display:flex;align-items:center;gap:10px;padding:0 0 6px;border-bottom:2px solid var(--ink);
+    font-family:'Archivo',sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--sub)}
+  .cab-entrada .cab-nome{flex:1 1 auto}
+  .cab-entrada .cab-qtd{width:88px;text-align:right}
+  .cab-entrada .cab-extra{display:flex;gap:6px}
+  .cab-entrada .cab-extra span{width:110px}
+
+  .tag{display:inline-block;font-family:'Roboto Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:20px;border:1px solid}
+  .t-vencido{color:#fff;background:var(--alerta);border-color:var(--alerta)}
+  .t-vencendo{color:var(--ink);background:var(--sinal);border-color:var(--sinal)}
+  .t-ok{color:var(--ok);border-color:var(--ok);background:rgba(76,124,75,.08)}
+  .t-cat{color:var(--sub);border-color:var(--linha);background:rgba(31,43,37,.04)}
+
+  .alerta-linha{border-left:4px solid transparent;padding-left:9px;margin-bottom:9px}
+  .a-vencido{border-left-color:var(--alerta)} .a-vencendo{border-left-color:var(--sinal)} .a-baixo{border-left-color:var(--frio)}
+
+  .vazio{text-align:center;padding:28px 16px;border:1px dashed var(--linha);background:var(--verde-suave);border-radius:var(--r);color:var(--sub)}
+  .vazio strong{display:block;font-family:'Archivo',sans-serif;font-size:18px;font-weight:600;color:var(--ink);margin-bottom:5px}
+
+  .barra{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:#fff;padding:11px 16px;z-index:40;display:flex;align-items:center;gap:12px}
+  .barra .cont{flex:1;font-size:14px}
+  .barra .cont b{font-family:'Roboto Mono',monospace}
+  .barra .btn{background:var(--verde);border-color:var(--verde);color:#fff}
+  .barra .btn.sec{background:transparent;border-color:rgba(255,255,255,.5);color:#fff}
+
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:60;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:14px;box-shadow:0 6px 18px rgba(0,0,0,.25);max-width:92vw}
+  .toast.erro{background:var(--alerta)}
+  .rodape{font-size:12px;color:var(--sub);text-align:center;padding:0 16px 24px}
+  .mais{text-align:center;padding:12px;color:var(--sub);font-size:13.5px}
+
+  @media (max-width:640px){
+    header h1{font-size:23px}
+    .linhaitem{flex-wrap:wrap}
+    .linhaitem .extra{width:100%}
+    .linhaitem .extra input{flex:1;width:auto}
+    .cab-entrada{display:none}
+  }
+  @media print{
+    nav,.barra,.chips,.acoes,header .sub,.hint{display:none!important}
+    body{background:#fff} .card{border:0;padding:0}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .toast{animation:sobe .2s ease-out}
+    @keyframes sobe{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+  }
+</style>
+</head>
+<body>
+<div class="faixa"></div>
+<header><div class="wrap">
+  <div class="eyebrow">Debora Abitante · Nutrição</div>
+  <h1>Controle de estoque</h1>
+  <div class="sub">Recebimento, retirada por refeição e validade.</div>
+  <a href="#" id="sync-badge" class="sync-badge" target="_blank" rel="noopener">Planilha do Google ↗</a>
+</div></header>
+<nav role="tablist"><div class="wrap">
+  <button role="tab" id="tab-painel" aria-selected="true" onclick="irPara('painel')">Painel</button>
+  <button role="tab" id="tab-saida" aria-selected="false" onclick="irPara('saida')">Lançar dia</button>
+  <button role="tab" id="tab-entrada" aria-selected="false" onclick="irPara('entrada')">Receber</button>
+  <button role="tab" id="tab-itens" aria-selected="false" onclick="irPara('itens')">Itens</button>
+  <button role="tab" id="tab-validade" aria-selected="false" onclick="irPara('validade')">Validade</button>
+  <button role="tab" id="tab-relatorios" aria-selected="false" onclick="irPara('relatorios')">Relatórios</button>
+</div></nav>
+
+<main>
+  <!-- PAINEL -->
+  <section id="painel">
+    <div class="kpis">
+      <div class="kpi vencido"><div class="n" id="k-vencido">0</div><div class="l">Lotes vencidos</div></div>
+      <div class="kpi vencendo"><div class="n" id="k-vencendo">0</div><div class="l">Vencem em 7 dias</div></div>
+      <div class="kpi baixo"><div class="n" id="k-baixo">0</div><div class="l">Abaixo do mínimo</div></div>
+      <div class="kpi"><div class="n" id="k-hoje">0</div><div class="l">Lançamentos de hoje</div></div>
+      <div class="kpi"><div class="n" id="k-itens">0</div><div class="l">Itens com saldo</div></div>
+    </div>
+    <div class="card">
+      <h2>O que resolver hoje</h2>
+      <p class="hint">Vencido primeiro, depois o que vence na semana, depois o que precisa comprar.</p>
+      <div id="lista-alertas"></div>
+    </div>
+    <div class="card">
+      <h2>Retiradas de hoje</h2>
+      <div id="hoje-resumo"></div>
+    </div>
+  </section>
+
+  <!-- LANÇAR DIA (saída) -->
+  <section id="saida" hidden>
+    <div class="card">
+      <h2>Lançar retiradas do dia</h2>
+      <p class="hint">Escolha a refeição, digite as quantidades ao lado dos itens e salve tudo de uma vez.</p>
+      <div class="grid">
+        <div><label for="s-ref">Refeição / destino</label><select id="s-ref">
+          <option>Café da manhã</option><option selected>Almoço</option><option>Jantar</option>
+          <option>Lanche</option><option>Limpeza e materiais</option>
+          <option>Descarte por validade</option><option>Perda / avaria</option>
+        </select></div>
+        <div><label for="s-data">Data</label><input id="s-data" type="date"></div>
+        <div><label for="s-resp">Quem retirou</label><input id="s-resp" placeholder="Opcional"></div>
+      </div>
+      <div style="margin-top:12px"><label for="s-busca">Buscar item</label><input id="s-busca" placeholder="Digite o nome" oninput="renderSaida()"></div>
+      <div class="chips" id="chips-saida"></div>
+      <div id="lista-saida"></div>
+    </div>
+  </section>
+
+  <!-- RECEBER -->
+  <section id="entrada" hidden>
+    <div class="card">
+      <h2>Registrar recebimento</h2>
+      <p class="hint">Lance o rancho inteiro de uma vez. Marca e validade ficam salvas junto da quantidade.</p>
+      <div class="grid">
+        <div><label for="e-data">Data da entrada</label><input id="e-data" type="date"></div>
+        <div><label for="e-forn">Fornecedor</label><input id="e-forn" placeholder="Opcional"></div>
+        <div><label for="e-nf">Nota fiscal</label><input id="e-nf" placeholder="Opcional"></div>
+        <div><label for="e-resp">Quem recebeu</label><input id="e-resp" placeholder="Opcional"></div>
+      </div>
+      <div style="margin-top:12px"><label for="e-busca">Buscar item</label><input id="e-busca" placeholder="Digite o nome" oninput="renderEntrada()"></div>
+      <div class="chips" id="chips-entrada"></div>
+      <div class="cab-entrada" aria-hidden="true">
+        <span class="cab-nome">Item</span>
+        <span class="cab-qtd">Quantidade</span>
+        <span class="cab-extra"><span>Marca</span><span>Validade</span></span>
+      </div>
+      <div id="lista-entrada"></div>
+    </div>
+  </section>
+
+  <!-- ITENS -->
+  <section id="itens" hidden>
+    <div class="card">
+      <h2>Incluir item novo</h2>
+      <p class="hint">Só para o que não está na lista. O mínimo alimenta o alerta de compra.</p>
+      <div class="grid">
+        <div><label for="i-nome">Nome</label><input id="i-nome" placeholder="Ex.: Iogurte grego"></div>
+        <div><label for="i-cat">Categoria</label><select id="i-cat"></select></div>
+        <div><label for="i-un">Unidade</label><select id="i-un">
+          <option>kg</option><option>g</option><option>L</option><option>un</option>
+          <option>Pacote</option><option>Caixa</option><option>Fardo</option><option>Rolo</option>
+        </select></div>
+        <div><label for="i-min">Estoque mínimo</label><input id="i-min" type="number" min="0" step="0.001" placeholder="0"></div>
+      </div>
+      <div class="acoes"><button class="btn primary" onclick="salvarItem()">Adicionar item</button></div>
+    </div>
+    <div class="card">
+      <h2>Catálogo</h2>
+      <p class="hint">Clique no mínimo para editar. O saldo vem dos lançamentos.</p>
+      <div><label for="i-busca">Buscar</label><input id="i-busca" placeholder="Nome do item" oninput="renderItens()"></div>
+      <div class="chips" id="chips-itens"></div>
+      <div class="tbl-scroll"><table>
+        <thead><tr><th>Item</th><th>Categoria</th><th class="num">Saldo</th><th class="num">Mínimo</th><th></th></tr></thead>
+        <tbody id="tb-itens"></tbody>
+      </table></div>
+      <div id="itens-mais"></div>
+    </div>
+  </section>
+
+  <!-- VALIDADE -->
+  <section id="validade" hidden>
+    <div class="card">
+      <h2>Controle de validade</h2>
+      <p class="hint">Cada entrada com marca e validade vira uma linha. Ordenado pelo que vence antes.</p>
+      <div class="chips" id="chips-validade"></div>
+      <div class="tbl-scroll"><table>
+        <thead><tr><th>Item</th><th>Marca</th><th>Validade</th><th class="num">Dias</th><th class="num">Saldo</th><th></th></tr></thead>
+        <tbody id="tb-validade"></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- RELATÓRIOS -->
+  <section id="relatorios" hidden>
+    <div class="card">
+      <h2>Relatórios</h2>
+      <p class="hint">Escolha o relatório e o período. Dá para exportar em CSV ou imprimir.</p>
+      <div class="grid">
+        <div><label for="r-tipo">Relatório</label><select id="r-tipo" onchange="renderRelatorio()">
+          <option value="refeicao">Consumo por refeição</option>
+          <option value="movimento">Entradas e saídas por item</option>
+          <option value="compra">Lista de compras (abaixo do mínimo)</option>
+          <option value="perda">Perdas e descartes</option>
+          <option value="parado">Itens sem movimento no período</option>
+        </select></div>
+        <div><label for="r-de">De</label><input id="r-de" type="date" onchange="renderRelatorio()"></div>
+        <div><label for="r-ate">Até</label><input id="r-ate" type="date" onchange="renderRelatorio()"></div>
+        <div><label for="r-cat">Categoria</label><select id="r-cat" onchange="renderRelatorio()"></select></div>
+      </div>
+      <div class="acoes">
+        <button class="btn small" onclick="exportarRelatorio()">Exportar CSV</button>
+        <button class="btn small" onclick="window.print()">Imprimir</button>
+        <button class="btn small" onclick="mesAtual()">Mês atual</button>
+      </div>
+      <h3 id="r-titulo" style="margin-top:16px;font-size:17px"></h3>
+      <div class="tbl-scroll" style="margin-top:8px"><table>
+        <thead id="r-head"></thead><tbody id="r-body"></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Dados</h2>
+      <p class="hint" id="hint-armazenamento">Tudo fica salvo neste aplicativo. O CSV serve para arquivar ou anexar em relatório.</p>
+      <div class="acoes">
+        <button class="btn small" onclick="exportarMovs()">Exportar todos os movimentos</button>
+        <button class="btn small" onclick="baixarBackup()">Baixar backup completo</button>
+        <button class="btn small" onclick="document.getElementById('arquivo-backup').click()">Restaurar backup</button>
+        <input type="file" id="arquivo-backup" accept="application/json" style="display:none" onchange="restaurarBackup(this.files[0])">
+        <button class="btn small" onclick="restaurarCatalogo()">Restaurar catálogo da planilha</button>
+        <button class="btn small" onclick="limparMovs()">Apagar movimentos</button>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="rodape">Sai primeiro o lote que vence antes.</div>
+<div class="barra" id="barra" hidden>
+  <div class="cont" id="barra-txt"></div>
+  <button class="btn small sec" onclick="limparPendentes()">Limpar</button>
+  <button class="btn small" id="barra-btn" onclick="salvarLote()">Salvar</button>
+</div>
+
+<script>
+const CATALOGO = [{"nome": "Abacate", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Abacaxi", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Abobrinha", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Acelga", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Achocolatado", "cat": "bebidas", "un": "kg", "saldo": 4.088}, {"nome": "Adoçante", "cat": "mercearia", "un": "un", "saldo": 1.0}, {"nome": "Agrião", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Aipim", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Alecrim", "cat": "temperos", "un": "kg", "saldo": 0.2}, {"nome": "Alface", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Alho", "cat": "hortifruti", "un": "kg", "saldo": 11.11}, {"nome": "Ameixa seca", "cat": "mercearia", "un": "kg", "saldo": 0.0}, {"nome": "Amido de milho", "cat": "farinhas", "un": "kg", "saldo": 2.616}, {"nome": "Arroz branco", "cat": "graos", "un": "kg", "saldo": 298.0}, {"nome": "Arroz integral", "cat": "graos", "un": "kg", "saldo": 96.0}, {"nome": "Azeitona fatiada", "cat": "mercearia", "un": "kg", "saldo": 0.0}, {"nome": "Açafrão", "cat": "temperos", "un": "kg", "saldo": 0.0}, {"nome": "Açúcar cristal", "cat": "mercearia", "un": "kg", "saldo": 8.96}, {"nome": "Açúcar refinado", "cat": "mercearia", "un": "kg", "saldo": 9.0}, {"nome": "Banana", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Batata em flocos", "cat": "hortifruti", "un": "kg", "saldo": 5.7}, {"nome": "Batata palha", "cat": "hortifruti", "un": "kg", "saldo": 54.3}, {"nome": "Bergamota", "cat": "hortifruti", "un": "kg", "saldo": 2.211}, {"nome": "Berinjela", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Beterraba processada", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Bisteca suína", "cat": "carnes", "un": "kg", "saldo": 0.0}, {"nome": "Bobina", "cat": "materiais", "un": "Rolo", "saldo": 0.0}, {"nome": "Bombom", "cat": "mercearia", "un": "un", "saldo": 0.0}, {"nome": "Café", "cat": "bebidas", "un": "kg", "saldo": 1.264}, {"nome": "Canela em casca", "cat": "temperos", "un": "kg", "saldo": 0.011}, {"nome": "Canela em pó", "cat": "temperos", "un": "kg", "saldo": 0.0}, {"nome": "Cebola", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Cebola roxa", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Cenoura processada", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Chicória", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Chimichurri", "cat": "temperos", "un": "kg", "saldo": 0.5}, {"nome": "Chocolate granulado", "cat": "mercearia", "un": "kg", "saldo": 1.0}, {"nome": "Chuchu processado", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Clean100", "cat": "materiais", "un": "L", "saldo": 5.0}, {"nome": "Cominho", "cat": "temperos", "un": "kg", "saldo": 0.608}, {"nome": "Corante", "cat": "temperos", "un": "kg", "saldo": 3.603}, {"nome": "Couve", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Couve flor", "cat": "hortifruti", "un": "kg", "saldo": 1.0}, {"nome": "Cravo da índia", "cat": "temperos", "un": "kg", "saldo": 0.073}, {"nome": "Curry", "cat": "temperos", "un": "kg", "saldo": 0.568}, {"nome": "Desinfetante", "cat": "materiais", "un": "L", "saldo": 20.0}, {"nome": "Detergente clorado", "cat": "materiais", "un": "L", "saldo": 0.0}, {"nome": "Detergente máquina", "cat": "materiais", "un": "L", "saldo": 0.0}, {"nome": "Detergente uso geral", "cat": "materiais", "un": "L", "saldo": 15.0}, {"nome": "Doce de amendoim", "cat": "mercearia", "un": "kg", "saldo": 100.0}, {"nome": "Ervilha em conserva", "cat": "graos", "un": "kg", "saldo": 1.7}, {"nome": "Ervilha em grão", "cat": "graos", "un": "kg", "saldo": 14.0}, {"nome": "Esponja dupla face", "cat": "materiais", "un": "un", "saldo": 0.0}, {"nome": "Farinha de aveia", "cat": "graos", "un": "kg", "saldo": 3.7}, {"nome": "Farinha de mandioca", "cat": "hortifruti", "un": "kg", "saldo": 7.0}, {"nome": "Farinha de milho", "cat": "farinhas", "un": "kg", "saldo": 21.0}, {"nome": "Farinha de rosca", "cat": "farinhas", "un": "kg", "saldo": 18.5}, {"nome": "Farinha de trigo", "cat": "farinhas", "un": "kg", "saldo": 5.0}, {"nome": "Feijão branco", "cat": "graos", "un": "kg", "saldo": 7.0}, {"nome": "Feijão carioca", "cat": "graos", "un": "kg", "saldo": 46.0}, {"nome": "Feijão preto", "cat": "graos", "un": "kg", "saldo": 116.5}, {"nome": "Feijão vermelho", "cat": "graos", "un": "kg", "saldo": 16.6}, {"nome": "Fermento", "cat": "farinhas", "un": "kg", "saldo": 0.723}, {"nome": "Fibraço", "cat": "materiais", "un": "un", "saldo": 0.0}, {"nome": "Filme PVC", "cat": "materiais", "un": "Rolo", "saldo": 0.0}, {"nome": "Filé de frango bife", "cat": "carnes", "un": "kg", "saldo": 0.0}, {"nome": "Filé de polaka", "cat": "carnes", "un": "kg", "saldo": 0.0}, {"nome": "Fósforo", "cat": "materiais", "un": "Caixa", "saldo": 0.0}, {"nome": "Gelatina morango", "cat": "hortifruti", "un": "kg", "saldo": 5.0}, {"nome": "Gelatina uva", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Goiabada", "cat": "hortifruti", "un": "kg", "saldo": 0.6}, {"nome": "Granola", "cat": "graos", "un": "kg", "saldo": 0.295}, {"nome": "Granulado de chocolate", "cat": "mercearia", "un": "kg", "saldo": 1.0}, {"nome": "Grão de bico", "cat": "graos", "un": "kg", "saldo": 14.8}, {"nome": "Guardanapo", "cat": "materiais", "un": "Pacote", "saldo": -2.0}, {"nome": "Hortelã", "cat": "hortifruti", "un": "kg", "saldo": 0.876}, {"nome": "Iogurte", "cat": "laticinios", "un": "un", "saldo": 15.0}, {"nome": "Ketchup", "cat": "temperos", "un": "kg", "saldo": 8.474}, {"nome": "Laranja", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Leite", "cat": "laticinios", "un": "kg", "saldo": 19.0}, {"nome": "Leite em pó", "cat": "mercearia", "un": "kg", "saldo": 3.0}, {"nome": "Leite zero lactose", "cat": "laticinios", "un": "kg", "saldo": 116.0}, {"nome": "Lentilha", "cat": "graos", "un": "un", "saldo": 58.702}, {"nome": "Limão", "cat": "hortifruti", "un": "kg", "saldo": -0.958}, {"nome": "Louro", "cat": "temperos", "un": "kg", "saldo": 0.196}, {"nome": "Luva ranhurada G", "cat": "materiais", "un": "un", "saldo": 0.0}, {"nome": "Luva ranhurada GG", "cat": "materiais", "un": "un", "saldo": 2.0}, {"nome": "Macarrão parafuso", "cat": "hortifruti", "un": "kg", "saldo": 58.5}, {"nome": "Mamão", "cat": "hortifruti", "un": "kg", "saldo": 0.044}, {"nome": "Manjericão", "cat": "temperos", "un": "kg", "saldo": 0.642}, {"nome": "Manjericão fresco", "cat": "temperos", "un": "kg", "saldo": 41.5}, {"nome": "Manjerona", "cat": "temperos", "un": "kg", "saldo": 0.47}, {"nome": "Margarina 50%", "cat": "laticinios", "un": "kg", "saldo": 0.1}, {"nome": "Margarina sachê", "cat": "carnes", "un": "kg", "saldo": 144.0}, {"nome": "Mariola", "cat": "mercearia", "un": "un", "saldo": 0.0}, {"nome": "Maçã", "cat": "hortifruti", "un": "kg", "saldo": 13.2}, {"nome": "Mel", "cat": "mercearia", "un": "kg", "saldo": 1.324}, {"nome": "Melão", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Milho verde", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Molho barbecue", "cat": "temperos", "un": "kg", "saldo": -2.0}, {"nome": "Molho de tomate", "cat": "hortifruti", "un": "kg", "saldo": 27.3}, {"nome": "Moranga processada", "cat": "hortifruti", "un": "kg", "saldo": -2.3}, {"nome": "Mostarda", "cat": "temperos", "un": "kg", "saldo": 7.808}, {"nome": "Mostarda moída", "cat": "carnes", "un": "kg", "saldo": 0.05}, {"nome": "Máscara facial", "cat": "materiais", "un": "Pacote", "saldo": 9.0}, {"nome": "Noz moscada", "cat": "temperos", "un": "kg", "saldo": 0.937}, {"nome": "Orégano", "cat": "temperos", "un": "kg", "saldo": 0.554}, {"nome": "Ovo de galinha", "cat": "carnes", "un": "un", "saldo": 98.0}, {"nome": "Palito de dente", "cat": "materiais", "un": "Caixa", "saldo": 3.0}, {"nome": "Pano de chão", "cat": "materiais", "un": "un", "saldo": 3.0}, {"nome": "Pano multiuso", "cat": "materiais", "un": "Rolo", "saldo": 3.0}, {"nome": "Papel toalha interfolhado", "cat": "materiais", "un": "Fardo", "saldo": 0.0}, {"nome": "Papel toalha rolo", "cat": "materiais", "un": "Rolo", "saldo": 7.0}, {"nome": "Paçoca", "cat": "mercearia", "un": "un", "saldo": 3.6}, {"nome": "Pepino", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Perfex", "cat": "materiais", "un": "Rolo", "saldo": 0.0}, {"nome": "Pimenta do reino", "cat": "temperos", "un": "kg", "saldo": 1.111}, {"nome": "Pimenta vermelha", "cat": "temperos", "un": "kg", "saldo": 0.0}, {"nome": "Pimentão verde", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Pipoca doce", "cat": "mercearia", "un": "un", "saldo": 0.0}, {"nome": "Polpa de abacaxi c/ hortelã", "cat": "carnes", "un": "kg", "saldo": 0.0}, {"nome": "Polpa de goiaba", "cat": "carnes", "un": "kg", "saldo": 0.0}, {"nome": "Polpa de limão", "cat": "carnes", "un": "kg", "saldo": 0.0}, {"nome": "Polpa de manga", "cat": "carnes", "un": "kg", "saldo": 3.06}, {"nome": "Polpa de morango", "cat": "carnes", "un": "kg", "saldo": 1.6}, {"nome": "Polpa de pêssego", "cat": "carnes", "un": "kg", "saldo": 1.02}, {"nome": "Presunto fatiado", "cat": "carnes", "un": "kg", "saldo": 0.716}, {"nome": "Proteína de soja G", "cat": "graos", "un": "kg", "saldo": 10.0}, {"nome": "Proteína de soja P", "cat": "graos", "un": "kg", "saldo": 7.05}, {"nome": "Pudim de baunilha", "cat": "mercearia", "un": "kg", "saldo": 10.4}, {"nome": "Pudim de chocolate", "cat": "mercearia", "un": "kg", "saldo": 2.0}, {"nome": "Páprica defumada", "cat": "temperos", "un": "kg", "saldo": 0.5}, {"nome": "Páprica picante", "cat": "temperos", "un": "kg", "saldo": 0.013}, {"nome": "Pão de forma", "cat": "farinhas", "un": "kg", "saldo": 0.0}, {"nome": "Pão de forma integral", "cat": "farinhas", "un": "kg", "saldo": 0.43}, {"nome": "Pão francês", "cat": "farinhas", "un": "un", "saldo": 40.0}, {"nome": "Pão francês integral", "cat": "farinhas", "un": "un", "saldo": 4.0}, {"nome": "Pão massinha", "cat": "farinhas", "un": "un", "saldo": 12.0}, {"nome": "Pão massinha integral", "cat": "farinhas", "un": "un", "saldo": 0.0}, {"nome": "Queijo mussarela", "cat": "laticinios", "un": "kg", "saldo": 0.77}, {"nome": "Quinoa", "cat": "graos", "un": "kg", "saldo": 3.1}, {"nome": "Rabanete", "cat": "hortifruti", "un": "kg", "saldo": 8.0}, {"nome": "Radite", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Repolho branco", "cat": "hortifruti", "un": "kg", "saldo": 0.987}, {"nome": "Repolho roxo", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Rúcula", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Sabonete perfumado", "cat": "materiais", "un": "L", "saldo": 0.0}, {"nome": "Saco amostras", "cat": "materiais", "un": "Pacote", "saldo": 0.0}, {"nome": "Saco lixo azul 100L", "cat": "materiais", "un": "Fardo", "saldo": 3.0}, {"nome": "Saco lixo azul 300L", "cat": "materiais", "un": "Fardo", "saldo": 0.0}, {"nome": "Saco lixo azul 40L", "cat": "materiais", "un": "Fardo", "saldo": 0.0}, {"nome": "Saco lixo preto 100L", "cat": "materiais", "un": "Fardo", "saldo": 0.0}, {"nome": "Saco lixo preto 300L", "cat": "materiais", "un": "Fardo", "saldo": 1.0}, {"nome": "Saco lixo preto 40L", "cat": "materiais", "un": "Fardo", "saldo": 6.0}, {"nome": "Saco transparente", "cat": "materiais", "un": "Fardo", "saldo": 0.0}, {"nome": "Sal refinado", "cat": "temperos", "un": "kg", "saldo": 30.0}, {"nome": "Sal sachê", "cat": "temperos", "un": "un", "saldo": 4000.0}, {"nome": "Shoyu", "cat": "temperos", "un": "L", "saldo": 15.3}, {"nome": "Sobrecoxa", "cat": "carnes", "un": "kg", "saldo": 15.0}, {"nome": "Soja grão", "cat": "graos", "un": "kg", "saldo": 11.51}, {"nome": "Tempero verde", "cat": "temperos", "un": "kg", "saldo": 11.7}, {"nome": "Tomate", "cat": "hortifruti", "un": "kg", "saldo": 0.0}, {"nome": "Touca descartável", "cat": "materiais", "un": "Pacote", "saldo": 1.0}, {"nome": "Trigo para quibe", "cat": "graos", "un": "kg", "saldo": 0.0}, {"nome": "Uva passa", "cat": "hortifruti", "un": "kg", "saldo": 0.7}, {"nome": "Vassoura de nylon", "cat": "materiais", "un": "un", "saldo": 0.0}, {"nome": "Vinagre", "cat": "temperos", "un": "L", "saldo": 21.75}, {"nome": "leite condensado", "cat": "mercearia", "un": "kg", "saldo": 0.0}, {"nome": "Álcool 70%", "cat": "materiais", "un": "L", "saldo": 12.75}, {"nome": "Álcool gel 70%", "cat": "materiais", "un": "L", "saldo": 0.0}, {"nome": "Óleo de soja", "cat": "graos", "un": "L", "saldo": 91.0}];
+const CATS = [
+  {id:'hortifruti', nome:'Hortifrúti'},
+  {id:'carnes', nome:'Carnes e ovos'},
+  {id:'laticinios', nome:'Laticínios'},
+  {id:'graos', nome:'Grãos e cereais'},
+  {id:'farinhas', nome:'Farináceos e massas'},
+  {id:'temperos', nome:'Temperos e molhos'},
+  {id:'mercearia', nome:'Mercearia e doces'},
+  {id:'bebidas', nome:'Bebidas'},
+  {id:'materiais', nome:'Materiais e limpeza'}
+];
+const nomeCat = c => (CATS.find(x=>x.id===c)||{nome:'Outros'}).nome;
+const PERECIVEIS = ['hortifruti','carnes','laticinios'];
+
+let DB = {itens:[], lotes:[], movs:[]};
+let filtro = {saida:{cat:'',}, entrada:{cat:''}, itens:{cat:''}, validade:{cat:''}};
+let pendentes = {saida:{}, entrada:{}};
+let telaAtual = 'painel';
+const CHAVE = 'estoque:debora:v2';
+let modoArmazenamento = 'memoria'; // 'claude' | 'local' | 'memoria'
+
+const SHEETS_APP_URL = 'https://script.google.com/macros/s/AKfycbyaGldiTMLxJvbU8_9sTxJCON-2K4tvVzH7t0Ie6Hf2pDfuwd49a6YrVEpnPAMqZWcC/exec';
+const SHEETS_PLANILHA_URL = 'https://docs.google.com/spreadsheets/d/1ttdmVLYICkyd5qOkkubp2VWuHKyHu8pfhWgmcrGVbTM/edit?gid=0#gid=0';
+
+async function sincronizarSheets(movs){
+  if(!movs.length) return;
+  const linhas = movs.map(m=>{
+    const i = item(m.itemId) || {};
+    return {
+      data:m.data, tipo:m.tipo==='entrada'?'Entrada':'Saída', item:i.nome||'',
+      categoria:nomeCat(i.cat), marca:m.marca||'', validade:m.validade||'',
+      quantidade:m.qtd, unidade:i.un||'', destino:m.destino||'',
+      responsavel:m.resp||'', observacao:m.obs||''
+    };
+  });
+  try{
+    await fetch(SHEETS_APP_URL, {method:'POST', body:JSON.stringify(linhas)});
+    marcarSync(true);
+  }catch(e){
+    marcarSync(false);
+  }
+}
+function marcarSync(ok){
+  const el = document.getElementById('sync-badge');
+  if(!el) return;
+  const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  el.dataset.status = ok ? 'ok' : 'erro';
+  el.innerHTML = ok ? `<b>●</b> Sincronizado às ${hora}` : `<b>●</b> Sem conexão com a planilha`;
+}
+
+/* ---------- persistência ---------- */
+function testarLocalStorage(){
+  try{
+    const t = '__teste_estoque__';
+    localStorage.setItem(t,'1'); localStorage.removeItem(t);
+    return true;
+  }catch(e){ return false; }
+}
+async function carregar(){
+  // 1) tenta o armazenamento do Claude (só existe dentro do preview do Claude)
+  if(typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function'){
+    try{
+      const r = await window.storage.get(CHAVE);
+      modoArmazenamento = 'claude';
+      if(r && r.value){ DB = JSON.parse(r.value); return; }
+      semearCatalogo(); await window.storage.set(CHAVE, JSON.stringify(DB)); return;
+    }catch(e){ /* segue para localStorage */ }
+  }
+  // 2) usa o navegador (funciona ao abrir o arquivo direto ou hospedado)
+  if(testarLocalStorage()){
+    modoArmazenamento = 'local';
+    const salvo = localStorage.getItem(CHAVE);
+    if(salvo){ DB = JSON.parse(salvo); return; }
+    semearCatalogo(); localStorage.setItem(CHAVE, JSON.stringify(DB)); return;
+  }
+  // 3) sem gravação possível (ex.: navegador bloqueando tudo)
+  modoArmazenamento = 'memoria';
+  semearCatalogo();
+}
+async function salvar(){
+  if(modoArmazenamento==='claude'){
+    try{ await window.storage.set(CHAVE, JSON.stringify(DB)); return; }
+    catch(e){ modoArmazenamento = testarLocalStorage() ? 'local' : 'memoria'; }
+  }
+  if(modoArmazenamento==='local'){
+    try{ localStorage.setItem(CHAVE, JSON.stringify(DB)); return; }
+    catch(e){ modoArmazenamento = 'memoria'; aviso('O navegador bloqueou a gravação. Use "Baixar backup" no menu Relatórios.', true); }
+  }
+}
+function semearCatalogo(){
+  CATALOGO.forEach(c=>{
+    const it = {id:id(), nome:c.nome, cat:c.cat, un:c.un, min:0};
+    DB.itens.push(it);
+    if(c.saldo > 0){
+      DB.lotes.push({id:id(), itemId:it.id, marca:'', validade:'', qtd:c.saldo, entrada:hoje(), forn:'', origemPlanilha:true});
+    }
+  });
+}
+
+/* ---------- utilidades ---------- */
+const id = () => Math.random().toString(36).slice(2,9);
+const hoje = () => new Date().toISOString().slice(0,10);
+const fmt = n => (Math.round(n*1000)/1000).toLocaleString('pt-BR');
+const dataBR = s => s ? s.split('-').reverse().join('/') : '—';
+const esc = s => String(s??'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+const semAcento = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function diasAte(d){ if(!d) return null;
+  return Math.round((new Date(d+'T00:00:00') - new Date(hoje()+'T00:00:00'))/86400000); }
+function item(i){ return DB.itens.find(x=>x.id===i); }
+function saldo(itemId){ return DB.lotes.filter(l=>l.itemId===itemId).reduce((s,l)=>s+l.qtd,0); }
+function lotesAtivos(itemId){
+  return DB.lotes.filter(l=>l.itemId===itemId && l.qtd>1e-7).sort((a,b)=>{
+    if(a.validade && b.validade) return a.validade.localeCompare(b.validade);
+    if(a.validade) return -1; if(b.validade) return 1;
+    return a.entrada.localeCompare(b.entrada);
+  });
+}
+function aviso(msg, erro){
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  const t = document.createElement('div');
+  t.className = 'toast'+(erro?' erro':''); t.textContent = msg; t.setAttribute('role','status');
+  document.body.appendChild(t); setTimeout(()=>t.remove(), 4000);
+}
+function tagValidade(v){
+  const d = diasAte(v);
+  if(d===null) return '<span class="tag t-cat">Sem validade</span>';
+  if(d<0) return `<span class="tag t-vencido">Vencido ${-d}d</span>`;
+  if(d<=7) return `<span class="tag t-vencendo">${d}d</span>`;
+  return `<span class="tag t-ok">${d}d</span>`;
+}
+
+/* ---------- navegação ---------- */
+function irPara(t){
+  telaAtual = t;
+  ['painel','saida','entrada','itens','validade','relatorios'].forEach(a=>{
+    document.getElementById(a).hidden = a!==t;
+    document.getElementById('tab-'+a).setAttribute('aria-selected', a===t?'true':'false');
+  });
+  window.scrollTo({top:0});
+  render();
+}
+function chips(elId, chave, cb){
+  const el = document.getElementById(elId);
+  el.innerHTML = ['',...CATS.map(c=>c.id)].map(c=>
+    `<button class="chip" aria-pressed="${filtro[chave].cat===c}" onclick="setCat('${chave}','${c}')">${c?nomeCat(c):'Todas'}</button>`).join('');
+}
+function setCat(chave, c){ filtro[chave].cat = c; render(); }
+
+function listar(chave, buscaId){
+  const b = semAcento(document.getElementById(buscaId)?.value || '');
+  return DB.itens.filter(i=> (!filtro[chave].cat || i.cat===filtro[chave].cat) && (!b || semAcento(i.nome).includes(b)))
+    .sort((a,b2)=>a.nome.localeCompare(b2.nome));
+}
+
+/* ---------- lançar dia (saída) ---------- */
+function renderSaida(){
+  chips('chips-saida','saida');
+  const lista = listar('saida','s-busca');
+  const el = document.getElementById('lista-saida');
+  const corte = lista.slice(0,120);
+  el.innerHTML = corte.map(i=>{
+    const v = pendentes.saida[i.id] || '';
+    return `<div class="linhaitem ${v?'preenchido':''}">
+      <div class="nome"><b>${esc(i.nome)}</b>
+        <span class="saldo">${fmt(saldo(i.id))} ${i.un} em estoque · ${nomeCat(i.cat)}</span></div>
+      <input type="number" min="0" step="0.001" inputmode="decimal" aria-label="Quantidade de ${esc(i.nome)}"
+        value="${v}" placeholder="0" oninput="setPend('saida','${i.id}',this.value)">
+    </div>`;
+  }).join('') || '<div class="vazio"><strong>Nada encontrado</strong>Ajuste a busca ou a categoria.</div>';
+  if(lista.length>120) el.innerHTML += `<div class="mais">Mostrando 120 de ${lista.length}. Refine a busca.</div>`;
+  barra();
+}
+function setPend(tipo, itemId, val, campo){
+  if(tipo==='saida'){
+    const n = parseFloat(val);
+    if(!val || isNaN(n) || n<=0) delete pendentes.saida[itemId]; else pendentes.saida[itemId] = n;
+  } else {
+    const p = pendentes.entrada[itemId] || {qtd:0, marca:'', validade:''};
+    if(campo==='qtd'){ const n = parseFloat(val); p.qtd = isNaN(n)?0:n; } else p[campo] = val;
+    if(!p.qtd && !p.marca && !p.validade) delete pendentes.entrada[itemId]; else pendentes.entrada[itemId] = p;
+  }
+  barra();
+}
+function barra(){
+  const b = document.getElementById('barra');
+  const n = telaAtual==='saida' ? Object.keys(pendentes.saida).length
+          : telaAtual==='entrada' ? Object.values(pendentes.entrada).filter(p=>p.qtd>0).length : 0;
+  if((telaAtual!=='saida' && telaAtual!=='entrada') || n===0){ b.hidden = true; return; }
+  b.hidden = false;
+  const alvo = telaAtual==='saida' ? document.getElementById('s-ref').value : 'entrada de estoque';
+  document.getElementById('barra-txt').innerHTML = `<b>${n}</b> item(ns) para lançar em ${esc(alvo)}`;
+  document.getElementById('barra-btn').textContent = telaAtual==='saida' ? 'Salvar retiradas' : 'Salvar recebimento';
+}
+function limparPendentes(){
+  pendentes = {saida:{}, entrada:{}};
+  render(); aviso('Lançamento limpo.');
+}
+function salvarLote(){ telaAtual==='saida' ? salvarSaidas() : salvarEntradas(); }
+
+async function salvarSaidas(){
+  const data = document.getElementById('s-data').value || hoje();
+  const destino = document.getElementById('s-ref').value;
+  const resp = document.getElementById('s-resp').value.trim();
+  const erros = []; let ok = 0; const criados = [];
+  for(const [itemId, qtd] of Object.entries(pendentes.saida)){
+    const i = item(itemId); if(!i) continue;
+    let resta = qtd;
+    const lts = lotesAtivos(itemId);
+    const disp = lts.reduce((s,l)=>s+l.qtd,0);
+    if(disp < qtd - 1e-7){ erros.push(`${i.nome}: só há ${fmt(disp)} ${i.un}`); continue; }
+    for(const l of lts){
+      if(resta<=1e-7) break;
+      const usa = Math.min(l.qtd, resta);
+      l.qtd = Math.round((l.qtd-usa)*1000)/1000; resta -= usa;
+      const mov = {id:id(), tipo:'saida', itemId, loteId:l.id, marca:l.marca, validade:l.validade,
+        qtd:usa, data, destino, resp, obs:''};
+      DB.movs.push(mov); criados.push(mov);
+    }
+    ok++;
+  }
+  pendentes.saida = {};
+  await salvar(); render();
+  sincronizarSheets(criados);
+  if(erros.length) aviso(`${ok} lançado(s). Sem saldo: ${erros.slice(0,3).join('; ')}`, true);
+  else aviso(`${ok} retirada(s) lançada(s) em ${destino}.`);
+}
+
+/* ---------- receber ---------- */
+function renderEntrada(){
+  chips('chips-entrada','entrada');
+  const lista = listar('entrada','e-busca');
+  const el = document.getElementById('lista-entrada');
+  el.innerHTML = lista.slice(0,120).map(i=>{
+    const p = pendentes.entrada[i.id] || {qtd:'', marca:'', validade:''};
+    const perec = PERECIVEIS.includes(i.cat);
+    return `<div class="linhaitem ${p.qtd?'preenchido':''}">
+      <div class="nome"><b>${esc(i.nome)}</b>
+        <span class="saldo">${fmt(saldo(i.id))} ${i.un} em estoque · ${nomeCat(i.cat)}</span></div>
+      <input type="number" min="0" step="0.001" inputmode="decimal" aria-label="Quantidade recebida de ${esc(i.nome)}"
+        value="${p.qtd||''}" placeholder="0" oninput="setPend('entrada','${i.id}',this.value,'qtd')">
+      <div class="extra">
+        <input value="${esc(p.marca)}" placeholder="Marca" aria-label="Marca" oninput="setPend('entrada','${i.id}',this.value,'marca')">
+        <input type="date" value="${p.validade}" aria-label="Validade${perec?' (obrigatória)':''}" oninput="setPend('entrada','${i.id}',this.value,'validade')">
+      </div>
+    </div>`;
+  }).join('') || '<div class="vazio"><strong>Nada encontrado</strong>Ajuste a busca ou a categoria.</div>';
+  if(lista.length>120) el.innerHTML += `<div class="mais">Mostrando 120 de ${lista.length}. Refine a busca.</div>`;
+  barra();
+}
+async function salvarEntradas(){
+  const data = document.getElementById('e-data').value || hoje();
+  const forn = document.getElementById('e-forn').value.trim();
+  const nf = document.getElementById('e-nf').value.trim();
+  const resp = document.getElementById('e-resp').value.trim();
+  const faltaVal = []; let ok = 0; const criados = [];
+  for(const [itemId, p] of Object.entries(pendentes.entrada)){
+    const i = item(itemId); if(!i || !(p.qtd>0)) continue;
+    if(PERECIVEIS.includes(i.cat) && !p.validade){ faltaVal.push(i.nome); continue; }
+    const lote = {id:id(), itemId, marca:p.marca||'Sem marca', validade:p.validade||'', qtd:p.qtd, entrada:data, forn, nf};
+    DB.lotes.push(lote);
+    const mov = {id:id(), tipo:'entrada', itemId, loteId:lote.id, marca:lote.marca, validade:lote.validade,
+      qtd:p.qtd, data, destino:forn||'Recebimento', resp, obs:nf?('NF '+nf):''};
+    DB.movs.push(mov); criados.push(mov);
+    delete pendentes.entrada[itemId]; ok++;
+  }
+  await salvar(); render();
+  sincronizarSheets(criados);
+  if(faltaVal.length) aviso(`${ok} recebido(s). Falta validade em: ${faltaVal.slice(0,3).join(', ')}`, true);
+  else aviso(`${ok} item(ns) recebido(s).`);
+}
+
+/* ---------- itens ---------- */
+async function salvarItem(){
+  const nome = document.getElementById('i-nome').value.trim();
+  if(!nome) return aviso('Informe o nome do item.', true);
+  if(DB.itens.some(i=>semAcento(i.nome)===semAcento(nome))) return aviso('Esse item já existe no catálogo.', true);
+  DB.itens.push({id:id(), nome, cat:document.getElementById('i-cat').value,
+    un:document.getElementById('i-un').value, min:parseFloat(document.getElementById('i-min').value)||0});
+  document.getElementById('i-nome').value=''; document.getElementById('i-min').value='';
+  await salvar(); render(); aviso(`${nome} adicionado ao catálogo.`);
+}
+async function setMin(itemId, v){ const i = item(itemId); i.min = parseFloat(v)||0; await salvar(); renderPainel(); }
+async function excluirItem(itemId){
+  if(saldo(itemId)>0) return aviso('Item com saldo. Zere o estoque antes de excluir.', true);
+  DB.itens = DB.itens.filter(i=>i.id!==itemId);
+  DB.lotes = DB.lotes.filter(l=>l.itemId!==itemId);
+  await salvar(); render(); aviso('Item excluído.');
+}
+function renderItens(){
+  chips('chips-itens','itens');
+  const lista = listar('itens','i-busca');
+  document.getElementById('tb-itens').innerHTML = lista.slice(0,150).map(i=>{
+    const s = saldo(i.id), baixo = i.min>0 && s<i.min;
+    return `<tr><td>${esc(i.nome)}</td><td><span class="tag t-cat">${nomeCat(i.cat)}</span></td>
+      <td class="num" ${baixo?'style="color:var(--alerta);font-weight:600"':''}>${fmt(s)} ${i.un}</td>
+      <td class="num"><input type="number" min="0" step="0.001" value="${i.min||''}" placeholder="0"
+        style="width:80px;text-align:right;padding:4px 6px" aria-label="Mínimo de ${esc(i.nome)}"
+        onchange="setMin('${i.id}',this.value)"></td>
+      <td><button class="btn small" onclick="excluirItem('${i.id}')">Excluir</button></td></tr>`;
+  }).join('') || '<tr><td colspan="5" style="color:var(--sub)">Nada encontrado.</td></tr>';
+  document.getElementById('itens-mais').innerHTML = lista.length>150 ? `<div class="mais">Mostrando 150 de ${lista.length}.</div>` : '';
+}
+
+/* ---------- validade ---------- */
+function renderValidade(){
+  chips('chips-validade','validade');
+  const linhas = DB.lotes.filter(l=>l.qtd>1e-7)
+    .filter(l=>{ const i=item(l.itemId); return i && (!filtro.validade.cat || i.cat===filtro.validade.cat); })
+    .sort((a,b)=>{ if(a.validade&&b.validade) return a.validade.localeCompare(b.validade);
+      if(a.validade) return -1; if(b.validade) return 1; return 0; });
+  document.getElementById('tb-validade').innerHTML = linhas.map(l=>{
+    const i = item(l.itemId), d = diasAte(l.validade);
+    const marca = l.marca ? esc(l.marca)
+      : `<span style="color:var(--sub);font-style:italic">Sem marca registrada</span>`;
+    return `<tr><td>${esc(i.nome)}</td><td>${marca}</td><td>${dataBR(l.validade)}</td>
+      <td class="num">${tagValidade(l.validade)}</td><td class="num">${fmt(l.qtd)} ${i.un}</td>
+      <td><button class="btn small" onclick="descartarLote('${l.id}')">Descartar</button></td></tr>`;
+  }).join('') || '<tr><td colspan="6" style="color:var(--sub)">Nenhum lote com saldo nesta categoria.</td></tr>';
+}
+async function descartarLote(loteId){
+  const l = DB.lotes.find(x=>x.id===loteId); if(!l) return;
+  const mov = {id:id(), tipo:'saida', itemId:l.itemId, loteId:l.id, marca:l.marca, validade:l.validade,
+    qtd:l.qtd, data:hoje(), destino:'Descarte por validade', resp:'', obs:'Baixa total do lote'};
+  DB.movs.push(mov);
+  l.qtd = 0; await salvar(); render(); sincronizarSheets([mov]); aviso('Lote baixado por descarte.');
+}
+
+/* ---------- painel ---------- */
+function renderPainel(){
+  const comSaldo = DB.lotes.filter(l=>l.qtd>1e-7);
+  const vencidos = comSaldo.filter(l=>l.validade && diasAte(l.validade)<0);
+  const vencendo = comSaldo.filter(l=>l.validade && diasAte(l.validade)>=0 && diasAte(l.validade)<=7);
+  const baixos = DB.itens.filter(i=>i.min>0 && saldo(i.id)<i.min);
+  const movsHoje = DB.movs.filter(m=>m.data===hoje());
+  document.getElementById('k-vencido').textContent = vencidos.length;
+  document.getElementById('k-vencendo').textContent = vencendo.length;
+  document.getElementById('k-baixo').textContent = baixos.length;
+  document.getElementById('k-hoje').textContent = movsHoje.length;
+  document.getElementById('k-itens').textContent = new Set(comSaldo.map(l=>l.itemId)).size;
+
+  const b = [];
+  vencidos.forEach(l=>b.push(`<div class="alerta-linha a-vencido"><b>${esc(item(l.itemId).nome)}</b> — ${esc(l.marca)}, ${fmt(l.qtd)} ${item(l.itemId).un}, vencido em ${dataBR(l.validade)}.
+    <button class="btn small" onclick="descartarLote('${l.id}')">Baixar descarte</button></div>`));
+  vencendo.forEach(l=>b.push(`<div class="alerta-linha a-vencendo"><b>${esc(item(l.itemId).nome)}</b> — ${esc(l.marca)}, ${fmt(l.qtd)} ${item(l.itemId).un}, vence em ${diasAte(l.validade)} dia(s). Use no cardápio da semana.</div>`));
+  baixos.slice(0,15).forEach(i=>b.push(`<div class="alerta-linha a-baixo"><b>${esc(i.nome)}</b> — saldo ${fmt(saldo(i.id))} ${i.un}, mínimo ${fmt(i.min)}. Comprar ${fmt(i.min-saldo(i.id))} ${i.un}.</div>`));
+  document.getElementById('lista-alertas').innerHTML = b.join('') ||
+    '<div class="vazio"><strong>Nada pendente</strong>Sem vencimento próximo e sem item abaixo do mínimo.</div>';
+
+  const porRef = {};
+  movsHoje.filter(m=>m.tipo==='saida').forEach(m=>{ porRef[m.destino] = (porRef[m.destino]||0)+1; });
+  const chaves = Object.keys(porRef);
+  document.getElementById('hoje-resumo').innerHTML = chaves.length
+    ? chaves.map(k=>`<div class="alerta-linha"><b>${esc(k)}</b>: ${porRef[k]} item(ns) retirado(s).</div>`).join('')
+    : '<div class="vazio"><strong>Nenhuma retirada hoje</strong>Abra “Lançar dia” para registrar o café, o almoço ou o jantar.</div>';
+}
+
+/* ---------- relatórios ---------- */
+let ultimoRel = {titulo:'', head:[], linhas:[]};
+function mesAtual(){
+  const d = new Date();
+  document.getElementById('r-de').value = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10);
+  document.getElementById('r-ate').value = new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10);
+  renderRelatorio();
+}
+function movsPeriodo(){
+  const de = document.getElementById('r-de').value, ate = document.getElementById('r-ate').value;
+  const cat = document.getElementById('r-cat').value;
+  return DB.movs.filter(m=>{
+    const i = item(m.itemId); if(!i) return false;
+    if(cat && i.cat!==cat) return false;
+    if(de && m.data<de) return false;
+    if(ate && m.data>ate) return false;
+    return true;
+  });
+}
+const REFS = ['Café da manhã','Almoço','Jantar','Lanche','Limpeza e materiais'];
+function renderRelatorio(){
+  const tipo = document.getElementById('r-tipo').value;
+  const movs = movsPeriodo();
+  const cat = document.getElementById('r-cat').value;
+  let head = [], linhas = [], titulo = '';
+
+  if(tipo==='refeicao'){
+    titulo = 'Consumo por refeição';
+    head = ['Item','Unidade',...REFS,'Outros','Total'];
+    const mapa = {};
+    movs.filter(m=>m.tipo==='saida').forEach(m=>{
+      const i = item(m.itemId);
+      mapa[i.id] = mapa[i.id] || {nome:i.nome, un:i.un, cols:{}, total:0};
+      const k = REFS.includes(m.destino) ? m.destino : 'Outros';
+      mapa[i.id].cols[k] = (mapa[i.id].cols[k]||0)+m.qtd;
+      mapa[i.id].total += m.qtd;
+    });
+    linhas = Object.values(mapa).sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(r=>[r.nome, r.un, ...REFS.map(k=>r.cols[k]?fmt(r.cols[k]):'—'), r.cols['Outros']?fmt(r.cols['Outros']):'—', fmt(r.total)]);
+  }
+
+  if(tipo==='movimento'){
+    titulo = 'Entradas e saídas por item';
+    head = ['Item','Unidade','Entrou','Saiu','Saldo atual','Mínimo'];
+    const mapa = {};
+    movs.forEach(m=>{
+      const i = item(m.itemId);
+      mapa[i.id] = mapa[i.id] || {i, ent:0, sai:0};
+      m.tipo==='entrada' ? mapa[i.id].ent += m.qtd : mapa[i.id].sai += m.qtd;
+    });
+    linhas = Object.values(mapa).sort((a,b)=>a.i.nome.localeCompare(b.i.nome))
+      .map(r=>[r.i.nome, r.i.un, fmt(r.ent), fmt(r.sai), fmt(saldo(r.i.id)), r.i.min?fmt(r.i.min):'—']);
+  }
+
+  if(tipo==='compra'){
+    titulo = 'Lista de compras';
+    head = ['Item','Categoria','Saldo','Mínimo','Comprar','Unidade'];
+    linhas = DB.itens.filter(i=>(!cat||i.cat===cat) && i.min>0 && saldo(i.id)<i.min)
+      .sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(i=>[i.nome, nomeCat(i.cat), fmt(saldo(i.id)), fmt(i.min), fmt(i.min-saldo(i.id)), i.un]);
+  }
+
+  if(tipo==='perda'){
+    titulo = 'Perdas e descartes';
+    head = ['Data','Item','Marca','Validade','Quantidade','Motivo'];
+    linhas = movs.filter(m=>m.tipo==='saida' && /Descarte|Perda/i.test(m.destino))
+      .sort((a,b)=>b.data.localeCompare(a.data))
+      .map(m=>{const i=item(m.itemId); return [dataBR(m.data), i.nome, m.marca||'—', dataBR(m.validade), fmt(m.qtd)+' '+i.un, m.destino];});
+  }
+
+  if(tipo==='parado'){
+    titulo = 'Itens sem movimento no período';
+    head = ['Item','Categoria','Saldo','Unidade','Última movimentação'];
+    const mexeu = new Set(movs.map(m=>m.itemId));
+    linhas = DB.itens.filter(i=>(!cat||i.cat===cat) && !mexeu.has(i.id) && saldo(i.id)>0)
+      .sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(i=>{
+        const ms = DB.movs.filter(m=>m.itemId===i.id).sort((a,b)=>b.data.localeCompare(a.data));
+        return [i.nome, nomeCat(i.cat), fmt(saldo(i.id)), i.un, ms.length?dataBR(ms[0].data):'Nunca'];
+      });
+  }
+
+  ultimoRel = {titulo, head, linhas};
+  document.getElementById('r-titulo').textContent = titulo;
+  document.getElementById('r-head').innerHTML = '<tr>'+head.map((h,ix)=>`<th${ix>1?' class="num"':''}>${h}</th>`).join('')+'</tr>';
+  document.getElementById('r-body').innerHTML = linhas.length
+    ? linhas.map(l=>'<tr>'+l.map((c,ix)=>`<td${ix>1?' class="num"':''}>${esc(c)}</td>`).join('')+'</tr>').join('')
+    : `<tr><td colspan="${head.length}" style="color:var(--sub)">Sem dados no período.</td></tr>`;
+}
+function baixarCSV(nome, linhas){
+  const csv = '\uFEFF' + linhas.map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = nome; a.click(); URL.revokeObjectURL(a.href);
+  aviso('CSV gerado.');
+}
+function exportarRelatorio(){
+  if(!ultimoRel.linhas.length) return aviso('Nada para exportar neste período.', true);
+  baixarCSV(semAcento(ultimoRel.titulo).replace(/ /g,'-')+'-'+hoje()+'.csv', [ultimoRel.head, ...ultimoRel.linhas]);
+}
+function baixarBackup(){
+  const blob = new Blob([JSON.stringify(DB, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'backup-estoque-'+hoje()+'.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  aviso('Backup baixado. Guarde este arquivo — ele restaura tudo se precisar.');
+}
+function restaurarBackup(arquivo){
+  if(!arquivo) return;
+  const leitor = new FileReader();
+  leitor.onload = async ()=>{
+    try{
+      const dados = JSON.parse(leitor.result);
+      if(!dados.itens || !dados.lotes || !dados.movs) throw new Error('formato');
+      DB = dados;
+      await salvar(); render();
+      aviso('Backup restaurado.');
+    }catch(e){ aviso('Esse arquivo não parece ser um backup válido.', true); }
+  };
+  leitor.readAsText(arquivo);
+}
+function atualizarHintArmazenamento(){
+  const el = document.getElementById('hint-armazenamento');
+  if(!el) return;
+  const textos = {
+    claude: 'Os dados ficam salvos no armazenamento do Claude, ligado a este preview.',
+    local: 'Os dados ficam salvos neste navegador. Abrindo o arquivo de outro computador ou navegador, ele começa do catálogo original — use o backup para levar seus dados junto.',
+    memoria: 'Este navegador não permitiu gravação: os dados valem só até fechar a aba. Baixe o backup com frequência.'
+  };
+  el.textContent = textos[modoArmazenamento] || textos.local;
+}
+function exportarMovs(){
+  const l = [['Data','Tipo','Item','Categoria','Marca','Validade','Quantidade','Unidade','Destino','Responsavel']];
+  DB.movs.slice().sort((a,b)=>b.data.localeCompare(a.data)).forEach(m=>{
+    const i = item(m.itemId); if(!i) return;
+    l.push([m.data, m.tipo, i.nome, nomeCat(i.cat), m.marca||'', m.validade||'',
+      String(m.qtd).replace('.',','), i.un, m.destino, m.resp||'']);
+  });
+  baixarCSV('movimentos-'+hoje()+'.csv', l);
+}
+async function limparMovs(){
+  DB.movs = []; await salvar(); render(); aviso('Movimentos apagados. Catálogo e saldos mantidos.');
+}
+async function restaurarCatalogo(){
+  const existentes = new Set(DB.itens.map(i=>semAcento(i.nome)));
+  let n = 0;
+  CATALOGO.forEach(c=>{
+    if(existentes.has(semAcento(c.nome))) return;
+    DB.itens.push({id:id(), nome:c.nome, cat:c.cat, un:c.un, min:0}); n++;
+  });
+  await salvar(); render();
+  aviso(n ? `${n} item(ns) do catálogo restaurado(s).` : 'O catálogo já está completo.');
+}
+
+/* ---------- render geral ---------- */
+function render(){
+  renderPainel();
+  if(telaAtual==='saida') renderSaida();
+  if(telaAtual==='entrada') renderEntrada();
+  if(telaAtual==='itens') renderItens();
+  if(telaAtual==='validade') renderValidade();
+  if(telaAtual==='relatorios') renderRelatorio();
+  barra();
+}
+(async function inicio(){
+  const opts = CATS.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+  document.getElementById('i-cat').innerHTML = opts;
+  document.getElementById('r-cat').innerHTML = '<option value="">Todas as categorias</option>'+opts;
+  document.getElementById('s-data').value = hoje();
+  document.getElementById('e-data').value = hoje();
+  document.getElementById('sync-badge').href = SHEETS_PLANILHA_URL;
+  await carregar();
+  atualizarHintArmazenamento();
+  mesAtual();
+  render();
+  if(modoArmazenamento==='memoria') aviso('Sem gravação neste navegador: os dados valem só nesta sessão. Use "Baixar backup" no menu Relatórios antes de fechar.', true);
+})();
+</script>
+</body>
+</html>
