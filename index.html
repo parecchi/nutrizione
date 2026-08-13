@@ -54,12 +54,30 @@
   /* resumo em formato de rótulo nutricional */
   .kpis{background:var(--surface);border:2px solid var(--ink);border-radius:var(--r);padding:0 16px 6px;margin-bottom:16px}
   .kpis::before{content:'Resumo do estoque';display:block;font-family:'Archivo',sans-serif;font-weight:700;font-size:20px;padding:12px 0 8px;border-bottom:7px solid var(--ink)}
-  .kpi{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--linha)}
+  .kpi{display:flex;flex-direction:row-reverse;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 0;border-bottom:1px solid var(--linha);
+    width:100%;background:none;border-left:0;border-right:0;border-top:0;font-family:'Source Sans 3',sans-serif;color:var(--ink);text-align:inherit;cursor:pointer}
+  .kpi:disabled{cursor:default}
+  .kpi:hover:not(:disabled){background:var(--verde-suave)}
+  .kpi:focus-visible{outline:2px solid var(--frio);outline-offset:-2px}
   .kpi:first-of-type{border-bottom-width:3px;border-bottom-color:var(--ink)}
-  .kpi:last-child{border-bottom:0}
+  .kpi-detalhe:last-of-type{border-bottom:0}
   .kpi .n{font-family:'Roboto Mono',monospace;font-size:21px;font-weight:600;line-height:1}
   .kpi .l{font-size:15px;font-weight:500}
   .kpi.vencido .n{color:var(--alerta)} .kpi.vencendo .n{color:var(--sinal)} .kpi.baixo .n{color:var(--frio)}
+  .kpi .seta{font-size:18px;color:var(--sub);transition:transform .15s ease;line-height:1}
+  .kpi[aria-expanded="true"] .seta{transform:rotate(90deg)}
+  .kpi:disabled .seta{opacity:.25}
+
+  .kpi-detalhe{padding:2px 4px 12px 4px;border-bottom:1px solid var(--linha);font-size:13.5px}
+  .kpi-detalhe:empty{display:none}
+  .kd-linha{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--linha)}
+  .kd-linha:last-child{border-bottom:0}
+  .kd-linha .kd-nome{flex:1 1 auto;min-width:0}
+  .kd-linha .kd-nome b{font-weight:600}
+  .kd-linha .kd-info{color:var(--sub);font-size:12.5px;display:block}
+  .kd-linha .kd-valor{font-family:'Roboto Mono',monospace;white-space:nowrap;text-align:right}
+  .kd-mais{color:var(--sub);font-size:12.5px;padding-top:4px}
+  .kd-vazio{color:var(--sub);font-size:13.5px;padding:4px 0}
 
   label{display:block;font-size:13px;color:var(--sub);margin-bottom:4px;font-weight:600}
   input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--linha);border-radius:var(--r);background:#fff;font-family:inherit;font-size:15px;color:var(--ink)}
@@ -163,11 +181,30 @@
   <!-- PAINEL -->
   <section id="painel">
     <div class="kpis">
-      <div class="kpi vencido"><div class="n" id="k-vencido">0</div><div class="l">Lotes vencidos</div></div>
-      <div class="kpi vencendo"><div class="n" id="k-vencendo">0</div><div class="l">Vencem em 7 dias</div></div>
-      <div class="kpi baixo"><div class="n" id="k-baixo">0</div><div class="l">Abaixo do mínimo</div></div>
-      <div class="kpi"><div class="n" id="k-hoje">0</div><div class="l">Lançamentos de hoje</div></div>
-      <div class="kpi"><div class="n" id="k-itens">0</div><div class="l">Itens com saldo</div></div>
+      <button type="button" class="kpi vencido" id="kpi-vencido" aria-expanded="false" onclick="toggleKpi('vencido')">
+        <span class="seta" aria-hidden="true">›</span><span class="n" id="k-vencido">0</span><span class="l">Lotes vencidos</span>
+      </button>
+      <div class="kpi-detalhe" id="kd-vencido" hidden></div>
+
+      <button type="button" class="kpi vencendo" id="kpi-vencendo" aria-expanded="false" onclick="toggleKpi('vencendo')">
+        <span class="seta" aria-hidden="true">›</span><span class="n" id="k-vencendo">0</span><span class="l">Vencem em 7 dias</span>
+      </button>
+      <div class="kpi-detalhe" id="kd-vencendo" hidden></div>
+
+      <button type="button" class="kpi baixo" id="kpi-baixo" aria-expanded="false" onclick="toggleKpi('baixo')">
+        <span class="seta" aria-hidden="true">›</span><span class="n" id="k-baixo">0</span><span class="l">Abaixo do mínimo</span>
+      </button>
+      <div class="kpi-detalhe" id="kd-baixo" hidden></div>
+
+      <button type="button" class="kpi" id="kpi-hoje" aria-expanded="false" onclick="toggleKpi('hoje')">
+        <span class="seta" aria-hidden="true">›</span><span class="n" id="k-hoje">0</span><span class="l">Lançamentos de hoje</span>
+      </button>
+      <div class="kpi-detalhe" id="kd-hoje" hidden></div>
+
+      <button type="button" class="kpi" id="kpi-itens" aria-expanded="false" onclick="toggleKpi('itens')">
+        <span class="seta" aria-hidden="true">›</span><span class="n" id="k-itens">0</span><span class="l">Itens com saldo</span>
+      </button>
+      <div class="kpi-detalhe" id="kd-itens" hidden></div>
     </div>
     <div class="card">
       <h2>O que resolver hoje</h2>
@@ -430,10 +467,11 @@ async function puxarSheets(mostrarAviso){
 async function sincronizarAgora(){ await puxarSheets(true); }
 
 async function enviarESincronizar(movsNovos, itemNovo){
+  marcarSync('carregando');
   try{
     if(movsNovos && movsNovos.length) await enviarMovsSheets(movsNovos);
     if(itemNovo) await enviarItemSheets(itemNovo);
-    await puxarSheets(false);
+    marcarSync('ok');
   }catch(e){
     marcarSync('erro');
     aviso('Salvo neste aparelho, mas ainda não sincronizado com a planilha.', true);
@@ -740,15 +778,40 @@ async function descartarLote(loteId){
 /* ---------- painel ---------- */
 function renderPainel(){
   const comSaldo = DB.lotes.filter(l=>l.qtd>1e-7);
-  const vencidos = comSaldo.filter(l=>l.validade && diasAte(l.validade)<0);
-  const vencendo = comSaldo.filter(l=>l.validade && diasAte(l.validade)>=0 && diasAte(l.validade)<=7);
-  const baixos = DB.itens.filter(i=>i.min>0 && saldo(i.id)<i.min);
-  const movsHoje = DB.movs.filter(m=>m.data===hoje());
+  const vencidos = comSaldo.filter(l=>l.validade && diasAte(l.validade)<0)
+    .sort((a,b)=>a.validade.localeCompare(b.validade));
+  const vencendo = comSaldo.filter(l=>l.validade && diasAte(l.validade)>=0 && diasAte(l.validade)<=7)
+    .sort((a,b)=>a.validade.localeCompare(b.validade));
+  const baixos = DB.itens.filter(i=>i.min>0 && saldo(i.id)<i.min)
+    .sort((a,b)=>(saldo(a.id)/a.min)-(saldo(b.id)/b.min));
+  const movsHoje = DB.movs.filter(m=>m.data===hoje()).slice().reverse();
+  const itensComSaldo = DB.itens.filter(i=>saldo(i.id)>1e-7).sort((a,b)=>a.nome.localeCompare(b.nome));
+
   document.getElementById('k-vencido').textContent = vencidos.length;
   document.getElementById('k-vencendo').textContent = vencendo.length;
   document.getElementById('k-baixo').textContent = baixos.length;
   document.getElementById('k-hoje').textContent = movsHoje.length;
-  document.getElementById('k-itens').textContent = new Set(comSaldo.map(l=>l.itemId)).size;
+  document.getElementById('k-itens').textContent = itensComSaldo.length;
+
+  preencherDetalheKpi('vencido', vencidos.length, vencidos.map(l=>{
+    const i = item(l.itemId);
+    return {nome:i.nome, info:`${esc(l.marca)||'Sem marca'} · venceu em ${dataBR(l.validade)}`,
+      valor:`${fmt(l.qtd)} ${i.un}`,
+      extra:`<button class="btn small" onclick="event.stopPropagation();descartarLote('${l.id}')">Baixar descarte</button>`};
+  }));
+  preencherDetalheKpi('vencendo', vencendo.length, vencendo.map(l=>{
+    const i = item(l.itemId);
+    return {nome:i.nome, info:`${esc(l.marca)||'Sem marca'} · vence em ${diasAte(l.validade)} dia(s)`, valor:`${fmt(l.qtd)} ${i.un}`};
+  }));
+  preencherDetalheKpi('baixo', baixos.length, baixos.map(i=>({
+    nome:i.nome, info:`saldo ${fmt(saldo(i.id))} de ${fmt(i.min)} ${i.un}`,
+    valor:`comprar ${fmt(i.min-saldo(i.id))} ${i.un}`})));
+  preencherDetalheKpi('hoje', movsHoje.length, movsHoje.map(m=>{
+    const i = item(m.itemId); if(!i) return null;
+    return {nome:i.nome, info:`${m.tipo==='entrada'?'Recebido':'Retirado'} · ${esc(m.destino)}`, valor:`${fmt(m.qtd)} ${i.un}`};
+  }).filter(Boolean));
+  preencherDetalheKpi('itens', itensComSaldo.length, itensComSaldo.map(i=>({
+    nome:i.nome, info:nomeCat(i.cat), valor:`${fmt(saldo(i.id))} ${i.un}`})), 40);
 
   const b = [];
   vencidos.forEach(l=>b.push(`<div class="alerta-linha a-vencido"><b>${esc(item(l.itemId).nome)}</b> — ${esc(l.marca)}, ${fmt(l.qtd)} ${item(l.itemId).un}, vencido em ${dataBR(l.validade)}.
@@ -764,6 +827,38 @@ function renderPainel(){
   document.getElementById('hoje-resumo').innerHTML = chaves.length
     ? chaves.map(k=>`<div class="alerta-linha"><b>${esc(k)}</b>: ${porRef[k]} item(ns) retirado(s).</div>`).join('')
     : '<div class="vazio"><strong>Nenhuma retirada hoje</strong>Abra “Lançar dia” para registrar o café, o almoço ou o jantar.</div>';
+}
+
+function preencherDetalheKpi(chave, total, linhas, limite){
+  const btn = document.getElementById('kpi-'+chave);
+  const painel = document.getElementById('kd-'+chave);
+  btn.disabled = total===0;
+  if(total===0){
+    painel.hidden = true; painel.innerHTML = ''; btn.setAttribute('aria-expanded','false');
+    return;
+  }
+  const teto = limite || linhas.length;
+  const html = linhas.slice(0,teto).map(l=>`<div class="kd-linha">
+      <div class="kd-nome"><b>${esc(l.nome)}</b><span class="kd-info">${l.info}</span></div>
+      <div class="kd-valor">${l.valor}${l.extra||''}</div>
+    </div>`).join('');
+  const resto = linhas.length>teto ? `<div class="kd-mais">+ ${linhas.length-teto} outro(s). Veja a lista completa em Relatórios ou Validade.</div>` : '';
+  painel.innerHTML = html + resto;
+  // se o total mudou e o painel estava aberto, mantém aberto com o conteúdo novo
+  if(!painel.hidden) return;
+}
+function toggleKpi(chave){
+  const chaves = ['vencido','vencendo','baixo','hoje','itens'];
+  const painel = document.getElementById('kd-'+chave);
+  const abrirAgora = painel.hidden;
+  chaves.forEach(k=>{
+    document.getElementById('kd-'+k).hidden = true;
+    document.getElementById('kpi-'+k).setAttribute('aria-expanded','false');
+  });
+  if(abrirAgora){
+    painel.hidden = false;
+    document.getElementById('kpi-'+chave).setAttribute('aria-expanded','true');
+  }
 }
 
 /* ---------- relatórios ---------- */
@@ -952,7 +1047,7 @@ function render(){
   setInterval(()=>{
     const semPendencia = Object.keys(pendentes.saida).length===0 && Object.keys(pendentes.entrada).length===0;
     if(document.visibilityState==='visible' && semPendencia) puxarSheets(false);
-  }, 60000);
+  }, 25000);
 })();
 </script>
 </body>
