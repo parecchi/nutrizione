@@ -85,7 +85,7 @@
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
   .acoes{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
 
-  button.btn{font-family:'Archivo',sans-serif;font-size:15px;font-weight:600;padding:10px 18px;border-radius:var(--r);cursor:pointer;border:1px solid var(--ink);background:transparent;color:var(--ink)}
+  .btn{font-family:'Archivo',sans-serif;font-size:15px;font-weight:600;padding:10px 18px;border-radius:var(--r);cursor:pointer;border:1px solid var(--ink);background:transparent;color:var(--ink);text-decoration:none;display:inline-block}
   .btn.primary{background:var(--verde);border-color:var(--verde);color:#fff}
   .btn.small{font-size:13px;padding:5px 10px}
   .btn:hover{filter:brightness(.94)} .btn:focus-visible{outline:2px solid var(--frio);outline-offset:2px}
@@ -165,7 +165,8 @@
   <div class="sub">Recebimento, retirada por refeição e validade.</div>
   <div class="sync-row">
     <button class="btn small" onclick="sincronizarAgora()">Sincronizar agora</button>
-    <a href="#" id="sync-badge" class="sync-badge" target="_blank" rel="noopener">Planilha do Google ↗</a>
+    <a href="#" id="link-planilha" class="btn small" target="_blank" rel="noopener">Abrir planilha ↗</a>
+    <span id="sync-badge" class="sync-badge"><b>●</b> Ainda não sincronizado</span>
   </div>
 </div></header>
 <nav role="tablist"><div class="wrap">
@@ -1032,7 +1033,7 @@ function render(){
   document.getElementById('r-cat').innerHTML = '<option value="">Todas as categorias</option>'+opts;
   document.getElementById('s-data').value = hoje();
   document.getElementById('e-data').value = hoje();
-  document.getElementById('sync-badge').href = SHEETS_PLANILHA_URL;
+  document.getElementById('link-planilha').href = SHEETS_PLANILHA_URL;
   await carregar();
   atualizarHintArmazenamento();
   mesAtual();
