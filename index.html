@@ -27,12 +27,15 @@
   header .eyebrow{font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--verde);margin-bottom:6px}
   header h1{font-size:27px;font-weight:600;line-height:1.05}
   header .sub{font-size:14px;color:var(--sub);margin-top:5px}
-  .sync-badge{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px;
+  .sync-row{display:flex;align-items:center;gap:10px;margin-top:9px;flex-wrap:wrap}
+  .sync-row .btn{padding:6px 14px}
+  .sync-badge{display:inline-flex;align-items:center;gap:6px;margin-top:0;font-size:12.5px;
     font-family:'Roboto Mono',monospace;color:var(--sub);text-decoration:none;
     border:1px solid var(--linha);border-radius:20px;padding:4px 11px}
   .sync-badge b{color:var(--sub)}
   .sync-badge[data-status="ok"] b{color:var(--verde)}
   .sync-badge[data-status="erro"] b{color:var(--alerta)}
+  .sync-badge[data-status="carregando"] b{color:var(--sinal)}
   .sync-badge:hover{border-color:var(--verde)}
 
   nav{background:var(--surface);border-bottom:2px solid var(--ink);position:sticky;top:0;z-index:30}
@@ -142,7 +145,10 @@
   <div class="eyebrow">Debora Abitante · Nutrição</div>
   <h1>Controle de estoque</h1>
   <div class="sub">Recebimento, retirada por refeição e validade.</div>
-  <a href="#" id="sync-badge" class="sync-badge" target="_blank" rel="noopener">Planilha do Google ↗</a>
+  <div class="sync-row">
+    <button class="btn small" onclick="sincronizarAgora()">Sincronizar agora</button>
+    <a href="#" id="sync-badge" class="sync-badge" target="_blank" rel="noopener">Planilha do Google ↗</a>
+  </div>
 </div></header>
 <nav role="tablist"><div class="wrap">
   <button role="tab" id="tab-painel" aria-selected="true" onclick="irPara('painel')">Painel</button>
@@ -326,13 +332,14 @@ let DB = {itens:[], lotes:[], movs:[]};
 let filtro = {saida:{cat:'',}, entrada:{cat:''}, itens:{cat:''}, validade:{cat:''}};
 let pendentes = {saida:{}, entrada:{}};
 let telaAtual = 'painel';
-const CHAVE = 'estoque:debora:v3';
+const CHAVE = 'estoque:debora:v4';
 let modoArmazenamento = 'memoria'; // 'claude' | 'local' | 'memoria'
 
 const SHEETS_APP_URL = 'https://script.google.com/macros/s/AKfycbyaGldiTMLxJvbU8_9sTxJCON-2K4tvVzH7t0Ie6Hf2pDfuwd49a6YrVEpnPAMqZWcC/exec';
 const SHEETS_PLANILHA_URL = 'https://docs.google.com/spreadsheets/d/1ttdmVLYICkyd5qOkkubp2VWuHKyHu8pfhWgmcrGVbTM/edit?gid=0#gid=0';
+let sincronizando = false;
 
-async function sincronizarSheets(movs){
+async function enviarMovsSheets(movs){
   if(!movs.length) return;
   const linhas = movs.map(m=>{
     const i = item(m.itemId) || {};
@@ -343,19 +350,104 @@ async function sincronizarSheets(movs){
       responsavel:m.resp||'', observacao:m.obs||''
     };
   });
+  await fetch(SHEETS_APP_URL, {method:'POST', body:JSON.stringify({tipo:'movimentos', linhas})});
+}
+async function enviarItemSheets(it){
+  await fetch(SHEETS_APP_URL, {method:'POST', body:JSON.stringify({tipo:'itens', linhas:[
+    {nome:it.nome, categoria:it.cat, unidade:it.un, minimo:it.min||0}
+  ]})});
+}
+
+/** Reconstrói todo o estado local a partir do histórico gravado no Sheets.
+ *  É assim que dois aparelhos diferentes chegam ao mesmo saldo: em vez de
+ *  cada um guardar sua própria versão, ambos recalculam a partir da mesma
+ *  planilha, que funciona como o registro único de tudo que já aconteceu. */
+function reconstruirDeSheets(movimentosSheet, itensSheet){
+  const base = {};
+  CATALOGO.forEach(c=>{ base[c.nome] = {nome:c.nome, cat:c.cat, un:c.un, min:0}; });
+  const maisRecentePorNome = {};
+  (itensSheet||[]).forEach(row=>{
+    if(!row || !row.nome) return;
+    const atual = maisRecentePorNome[row.nome];
+    if(!atual || String(row.registradoEm) >= String(atual.registradoEm)) maisRecentePorNome[row.nome] = row;
+  });
+  Object.values(maisRecentePorNome).forEach(row=>{
+    const anterior = base[row.nome];
+    const catValida = CATS.some(c=>c.id===row.categoria);
+    base[row.nome] = {
+      nome:row.nome,
+      cat: catValida ? row.categoria : (anterior?anterior.cat:'mercearia'),
+      un: row.unidade || (anterior?anterior.un:'un'),
+      min: (row.minimo===''||row.minimo===undefined||row.minimo===null) ? 0 : (parseFloat(row.minimo)||0)
+    };
+  });
+
+  const novosItens = Object.values(base).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(it=>({id:idItem(it.nome), nome:it.nome, cat:it.cat, un:it.un, min:it.min}));
+
+  const lotesMap = {};
+  const novosMovs = [];
+  (movimentosSheet||[]).slice()
+    .sort((a,b)=>String(a.registradoEm).localeCompare(String(b.registradoEm)))
+    .forEach(m=>{
+      if(!m || !m.item) return;
+      const itemId = idItem(m.item);
+      const eEntrada = String(m.tipo).toLowerCase().startsWith('entr');
+      const qtd = parseFloat(m.quantidade)||0;
+      const chave = itemId+'|'+(m.marca||'')+'|'+(m.validade||'');
+      if(!lotesMap[chave]) lotesMap[chave] = {id:id(), itemId, marca:m.marca||'', validade:m.validade||'', qtd:0, entrada:m.data||hoje(), forn:''};
+      lotesMap[chave].qtd = Math.round((lotesMap[chave].qtd + (eEntrada?qtd:-qtd))*1000)/1000;
+      novosMovs.push({id:id(), tipo:eEntrada?'entrada':'saida', itemId, loteId:lotesMap[chave].id,
+        marca:m.marca||'', validade:m.validade||'', qtd, data:m.data||'', destino:m.destino||'',
+        resp:m.responsavel||'', obs:m.observacao||''});
+    });
+
+  DB.itens = novosItens;
+  DB.lotes = Object.values(lotesMap).filter(l=>l.qtd>1e-6 || l.qtd<-1e-6);
+  DB.movs = novosMovs;
+}
+
+async function puxarSheets(mostrarAviso){
+  if(sincronizando) return;
+  sincronizando = true;
+  marcarSync('carregando');
   try{
-    await fetch(SHEETS_APP_URL, {method:'POST', body:JSON.stringify(linhas)});
-    marcarSync(true);
+    const r = await fetch(SHEETS_APP_URL, {method:'GET'});
+    const dados = await r.json();
+    if(!dados || dados.ok===false) throw new Error((dados&&dados.erro)||'resposta inválida');
+    reconstruirDeSheets(dados.movimentos, dados.itens);
+    await salvar();
+    render();
+    marcarSync('ok');
+    if(mostrarAviso) aviso('Sincronizado com a planilha.');
   }catch(e){
-    marcarSync(false);
+    marcarSync('erro');
+    if(mostrarAviso) aviso('Não deu para sincronizar agora. Confira a internet e tente de novo.', true);
+  }finally{
+    sincronizando = false;
   }
 }
-function marcarSync(ok){
+async function sincronizarAgora(){ await puxarSheets(true); }
+
+async function enviarESincronizar(movsNovos, itemNovo){
+  try{
+    if(movsNovos && movsNovos.length) await enviarMovsSheets(movsNovos);
+    if(itemNovo) await enviarItemSheets(itemNovo);
+    await puxarSheets(false);
+  }catch(e){
+    marcarSync('erro');
+    aviso('Salvo neste aparelho, mas ainda não sincronizado com a planilha.', true);
+  }
+}
+
+function marcarSync(status){
   const el = document.getElementById('sync-badge');
   if(!el) return;
   const hora = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-  el.dataset.status = ok ? 'ok' : 'erro';
-  el.innerHTML = ok ? `<b>●</b> Sincronizado às ${hora}` : `<b>●</b> Sem conexão com a planilha`;
+  el.dataset.status = status;
+  el.innerHTML = status==='ok' ? `<b>●</b> Sincronizado às ${hora}`
+    : status==='carregando' ? `<b>●</b> Sincronizando…`
+    : `<b>●</b> Sem conexão com a planilha`;
 }
 
 /* ---------- persistência ---------- */
@@ -401,7 +493,7 @@ function semearCatalogo(){
   // Catálogo entra zerado: o saldo passa a ser construído só pelos
   // recebimentos e retiradas lançados no sistema, que já vão para o Sheets.
   CATALOGO.forEach(c=>{
-    DB.itens.push({id:id(), nome:c.nome, cat:c.cat, un:c.un, min:0});
+    DB.itens.push({id:idItem(c.nome), nome:c.nome, cat:c.cat, un:c.un, min:0});
   });
 }
 
@@ -412,6 +504,10 @@ const fmt = n => (Math.round(n*1000)/1000).toLocaleString('pt-BR');
 const dataBR = s => s ? s.split('-').reverse().join('/') : '—';
 const esc = s => String(s??'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const semAcento = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function idItem(nome){
+  const slug = semAcento(nome).trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  return 'i-'+(slug || 'x'+Math.random().toString(36).slice(2,8));
+}
 function diasAte(d){ if(!d) return null;
   return Math.round((new Date(d+'T00:00:00') - new Date(hoje()+'T00:00:00'))/86400000); }
 function item(i){ return DB.itens.find(x=>x.id===i); }
@@ -528,9 +624,9 @@ async function salvarSaidas(){
   }
   pendentes.saida = {};
   await salvar(); render();
-  sincronizarSheets(criados);
   if(erros.length) aviso(`${ok} lançado(s). Sem saldo: ${erros.slice(0,3).join('; ')}`, true);
   else aviso(`${ok} retirada(s) lançada(s) em ${destino}.`);
+  await enviarESincronizar(criados);
 }
 
 /* ---------- receber ---------- */
@@ -572,9 +668,9 @@ async function salvarEntradas(){
     delete pendentes.entrada[itemId]; ok++;
   }
   await salvar(); render();
-  sincronizarSheets(criados);
   if(faltaVal.length) aviso(`${ok} recebido(s). Falta validade em: ${faltaVal.slice(0,3).join(', ')}`, true);
   else aviso(`${ok} item(ns) recebido(s).`);
+  await enviarESincronizar(criados);
 }
 
 /* ---------- itens ---------- */
@@ -582,12 +678,19 @@ async function salvarItem(){
   const nome = document.getElementById('i-nome').value.trim();
   if(!nome) return aviso('Informe o nome do item.', true);
   if(DB.itens.some(i=>semAcento(i.nome)===semAcento(nome))) return aviso('Esse item já existe no catálogo.', true);
-  DB.itens.push({id:id(), nome, cat:document.getElementById('i-cat').value,
-    un:document.getElementById('i-un').value, min:parseFloat(document.getElementById('i-min').value)||0});
+  const novo = {id:idItem(nome), nome, cat:document.getElementById('i-cat').value,
+    un:document.getElementById('i-un').value, min:parseFloat(document.getElementById('i-min').value)||0};
+  DB.itens.push(novo);
   document.getElementById('i-nome').value=''; document.getElementById('i-min').value='';
   await salvar(); render(); aviso(`${nome} adicionado ao catálogo.`);
+  await enviarESincronizar([], novo);
 }
-async function setMin(itemId, v){ const i = item(itemId); i.min = parseFloat(v)||0; await salvar(); renderPainel(); }
+async function setMin(itemId, v){
+  const i = item(itemId); if(!i) return;
+  i.min = parseFloat(v)||0;
+  await salvar(); renderPainel();
+  await enviarESincronizar([], i);
+}
 async function excluirItem(itemId){
   if(saldo(itemId)>0) return aviso('Item com saldo. Zere o estoque antes de excluir.', true);
   DB.itens = DB.itens.filter(i=>i.id!==itemId);
@@ -630,7 +733,8 @@ async function descartarLote(loteId){
   const mov = {id:id(), tipo:'saida', itemId:l.itemId, loteId:l.id, marca:l.marca, validade:l.validade,
     qtd:l.qtd, data:hoje(), destino:'Descarte por validade', resp:'', obs:'Baixa total do lote'};
   DB.movs.push(mov);
-  l.qtd = 0; await salvar(); render(); sincronizarSheets([mov]); aviso('Lote baixado por descarte.');
+  l.qtd = 0; await salvar(); render(); aviso('Lote baixado por descarte.');
+  await enviarESincronizar([mov]);
 }
 
 /* ---------- painel ---------- */
@@ -839,6 +943,16 @@ function render(){
   mesAtual();
   render();
   if(modoArmazenamento==='memoria') aviso('Sem gravação neste navegador: os dados valem só nesta sessão. Use "Baixar backup" no menu Relatórios antes de fechar.', true);
+
+  // Busca o estado mais recente da planilha assim que a tela abre, sem travar a exibição inicial.
+  puxarSheets(false);
+
+  // Atualização de fundo: pega o que outro aparelho lançou, sem precisar apertar nada.
+  // Pausa sozinha se houver um lançamento em andamento, para não perder o que está sendo digitado.
+  setInterval(()=>{
+    const semPendencia = Object.keys(pendentes.saida).length===0 && Object.keys(pendentes.entrada).length===0;
+    if(document.visibilityState==='visible' && semPendencia) puxarSheets(false);
+  }, 60000);
 })();
 </script>
 </body>
