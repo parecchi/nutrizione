@@ -376,6 +376,18 @@ let modoArmazenamento = 'memoria'; // 'claude' | 'local' | 'memoria'
 const SHEETS_APP_URL = 'https://script.google.com/macros/s/AKfycbyaGldiTMLxJvbU8_9sTxJCON-2K4tvVzH7t0Ie6Hf2pDfuwd49a6YrVEpnPAMqZWcC/exec';
 const SHEETS_PLANILHA_URL = 'https://docs.google.com/spreadsheets/d/1ttdmVLYICkyd5qOkkubp2VWuHKyHu8pfhWgmcrGVbTM/edit?gid=0#gid=0';
 let sincronizando = false;
+let ultimoPullEm = 0;
+const INTERVALO_MIN_PULL_MS = 5000; // evita repetir a mesma busca se dois gatilhos disparam quase juntos
+
+async function fetchComPrazo(url, opts, prazoMs){
+  const controlador = new AbortController();
+  const timer = setTimeout(()=>controlador.abort(), prazoMs);
+  try{
+    return await fetch(url, Object.assign({}, opts, {signal:controlador.signal}));
+  }finally{
+    clearTimeout(timer);
+  }
+}
 
 async function enviarMovsSheets(movs){
   if(!movs.length) return;
@@ -388,12 +400,12 @@ async function enviarMovsSheets(movs){
       responsavel:m.resp||'', observacao:m.obs||''
     };
   });
-  await fetch(SHEETS_APP_URL, {method:'POST', body:JSON.stringify({tipo:'movimentos', linhas})});
+  await fetchComPrazo(SHEETS_APP_URL, {method:'POST', body:JSON.stringify({tipo:'movimentos', linhas})}, 18000);
 }
 async function enviarItemSheets(it){
-  await fetch(SHEETS_APP_URL, {method:'POST', body:JSON.stringify({tipo:'itens', linhas:[
+  await fetchComPrazo(SHEETS_APP_URL, {method:'POST', body:JSON.stringify({tipo:'itens', linhas:[
     {nome:it.nome, categoria:it.cat, unidade:it.un, minimo:it.min||0}
-  ]})});
+  ]})}, 18000);
 }
 
 /** Reconstrói todo o estado local a partir do histórico gravado no Sheets.
@@ -445,37 +457,53 @@ function reconstruirDeSheets(movimentosSheet, itensSheet){
   DB.movs = novosMovs;
 }
 
-async function puxarSheets(mostrarAviso){
+let falhasSeguidasFundo = 0;
+
+async function puxarSheets(modo){
+  // modo: 'manual' (botão, mostra status) ou 'fundo' (silencioso)
   if(sincronizando) return;
+  const agora = Date.now();
+  if(modo!=='manual' && (agora - ultimoPullEm) < INTERVALO_MIN_PULL_MS) return;
   sincronizando = true;
-  marcarSync('carregando');
+  if(modo==='manual') marcarSync('carregando');
   try{
-    const r = await fetch(SHEETS_APP_URL, {method:'GET'});
+    const r = await fetchComPrazo(SHEETS_APP_URL, {method:'GET'}, 18000);
     const dados = await r.json();
     if(!dados || dados.ok===false) throw new Error((dados&&dados.erro)||'resposta inválida');
     reconstruirDeSheets(dados.movimentos, dados.itens);
     await salvar();
     render();
+    ultimoPullEm = Date.now();
+    falhasSeguidasFundo = 0;
     marcarSync('ok');
-    if(mostrarAviso) aviso('Sincronizado com a planilha.');
+    if(modo==='manual') aviso('Sincronizado com a planilha.');
   }catch(e){
-    marcarSync('erro');
-    if(mostrarAviso) aviso('Não deu para sincronizar agora. Confira a internet e tente de novo.', true);
+    // Uma falha isolada em segundo plano não precisa alarmar ninguém — o
+    // próximo ciclo de 25s tenta de novo sozinho. Só acende o alerta se
+    // insistir em falhar, ou se foi um clique manual (aí a pessoa quer saber).
+    if(modo==='manual'){
+      marcarSync('erro');
+      aviso('Não deu para sincronizar agora. Confira a internet e tente de novo.', true);
+    }else{
+      falhasSeguidasFundo++;
+      if(falhasSeguidasFundo>=3) marcarSync('erro');
+    }
   }finally{
     sincronizando = false;
   }
 }
-async function sincronizarAgora(){ await puxarSheets(true); }
+async function sincronizarAgora(){ await puxarSheets('manual'); }
 
 async function enviarESincronizar(movsNovos, itemNovo){
-  marcarSync('carregando');
+  // Roda em segundo plano, sem mostrar estado de "carregando": o dado já está
+  // salvo localmente antes disso ser chamado, então nada fica esperando aqui.
   try{
     if(movsNovos && movsNovos.length) await enviarMovsSheets(movsNovos);
     if(itemNovo) await enviarItemSheets(itemNovo);
+    falhasSeguidasFundo = 0;
     marcarSync('ok');
   }catch(e){
     marcarSync('erro');
-    aviso('Salvo neste aparelho, mas ainda não sincronizado com a planilha.', true);
   }
 }
 
@@ -1041,13 +1069,13 @@ function render(){
   if(modoArmazenamento==='memoria') aviso('Sem gravação neste navegador: os dados valem só nesta sessão. Use "Baixar backup" no menu Relatórios antes de fechar.', true);
 
   // Busca o estado mais recente da planilha assim que a tela abre, sem travar a exibição inicial.
-  puxarSheets(false);
+  puxarSheets('fundo');
 
   // Atualização de fundo: pega o que outro aparelho lançou, sem precisar apertar nada.
   // Pausa sozinha se houver um lançamento em andamento, para não perder o que está sendo digitado.
   setInterval(()=>{
     const semPendencia = Object.keys(pendentes.saida).length===0 && Object.keys(pendentes.entrada).length===0;
-    if(document.visibilityState==='visible' && semPendencia) puxarSheets(false);
+    if(document.visibilityState==='visible' && semPendencia) puxarSheets('fundo');
   }, 25000);
 })();
 </script>
