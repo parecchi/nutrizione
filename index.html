@@ -157,8 +157,15 @@
     .cab-entrada{display:none}
   }
   @media print{
-    nav,.barra,.chips,.acoes,header .sub,.hint{display:none!important}
-    body{background:#fff} .card{border:0;padding:0}
+    @page{ size: landscape; margin: 12mm; }
+    nav,.barra,.chips,.acoes,header .sub,.hint,.sync-row,#link-planilha{display:none!important}
+    body{background:#fff}
+    main{max-width:100%;padding:0}
+    .card{border:0;padding:0;box-shadow:none;break-inside:avoid;margin-bottom:16px}
+    .tbl-scroll{overflow:visible}
+    table{width:100%;table-layout:auto}
+    th,td{white-space:normal;word-break:break-word;padding:5px 6px;font-size:11.5px}
+    tr{break-inside:avoid}
   }
   @media (prefers-reduced-motion:no-preference){
     .toast{animation:sobe .2s ease-out}
@@ -329,6 +336,7 @@
           <option value="compra">Lista de compras (abaixo do mínimo)</option>
           <option value="perda">Perdas e descartes</option>
           <option value="parado">Itens sem movimento no período</option>
+          <option value="correcoes">Correções de lançamento</option>
         </select></div>
         <div><label for="r-de">De</label><input id="r-de" type="date" onchange="renderRelatorio()"></div>
         <div><label for="r-ate">Até</label><input id="r-ate" type="date" onchange="renderRelatorio()"></div>
@@ -432,6 +440,8 @@ const CATS = [
 ];
 const nomeCat = c => (CATS.find(x=>x.id===c)||{nome:'Outros'}).nome;
 const PERECIVEIS = ['hortifruti','carnes','laticinios'];
+const DESTINO_CORRECAO = 'Correção de lançamento';
+const naoECorrecao = m => m.destino!==DESTINO_CORRECAO;
 
 let DB = {itens:[], lotes:[], movs:[]};
 let filtro = {saida:{cat:'',}, entrada:{cat:''}, itens:{cat:''}, validade:{cat:''}};
@@ -906,7 +916,7 @@ async function salvarEdicaoLote(loteId){
   // apagar história, fica registrado como correção, igual a qualquer outro lançamento.
   const movsCorrecao = [];
   const fechamento = {id:id(), tipo:'saida', itemId:l.itemId, loteId:l.id, marca:l.marca, validade:l.validade,
-    qtd:l.qtd, data:hoje(), destino:'Correção de lançamento', resp:'', obs:'Fechado para corrigir marca/validade/quantidade'};
+    qtd:l.qtd, data:hoje(), destino:DESTINO_CORRECAO, resp:'', obs:'Fechado para corrigir marca/validade/quantidade'};
   DB.movs.push(fechamento); movsCorrecao.push(fechamento);
   l.qtd = 0;
 
@@ -914,7 +924,7 @@ async function salvarEdicaoLote(loteId){
     const novoLote = {id:id(), itemId:l.itemId, marca:novaMarca, validade:novaValidade, qtd:novaQtd, entrada:l.entrada||hoje(), forn:l.forn||''};
     DB.lotes.push(novoLote);
     const abertura = {id:id(), tipo:'entrada', itemId:l.itemId, loteId:novoLote.id, marca:novaMarca, validade:novaValidade,
-      qtd:novaQtd, data:hoje(), destino:'Correção de lançamento', resp:'', obs:'Reaberto com o dado corrigido'};
+      qtd:novaQtd, data:hoje(), destino:DESTINO_CORRECAO, resp:'', obs:'Reaberto com o dado corrigido'};
     DB.movs.push(abertura); movsCorrecao.push(abertura);
   }
   loteEmEdicao = null;
@@ -987,7 +997,7 @@ function renderPainel(){
     '<div class="vazio"><strong>Nada pendente</strong>Sem vencimento próximo e sem item abaixo do mínimo.</div>';
 
   const porRef = {};
-  movsHoje.filter(m=>m.tipo==='saida').forEach(m=>{ porRef[m.destino] = (porRef[m.destino]||0)+1; });
+  movsHoje.filter(m=>m.tipo==='saida' && naoECorrecao(m)).forEach(m=>{ porRef[m.destino] = (porRef[m.destino]||0)+1; });
   const chaves = Object.keys(porRef);
   document.getElementById('hoje-resumo').innerHTML = chaves.length
     ? chaves.map(k=>`<div class="alerta-linha"><b>${esc(k)}</b>: ${porRef[k]} item(ns) retirado(s).</div>`).join('')
@@ -1054,24 +1064,23 @@ function renderRelatorio(){
 
   if(tipo==='refeicao'){
     titulo = 'Consumo por refeição';
-    head = ['Item','Unidade',...REFS,'Outros','Total'];
+    head = ['Item','Unidade',...REFS,'Total'];
     const mapa = {};
-    movs.filter(m=>m.tipo==='saida').forEach(m=>{
+    movs.filter(m=>m.tipo==='saida' && REFS.includes(m.destino)).forEach(m=>{
       const i = item(m.itemId);
       mapa[i.id] = mapa[i.id] || {nome:i.nome, un:i.un, cols:{}, total:0};
-      const k = REFS.includes(m.destino) ? m.destino : 'Outros';
-      mapa[i.id].cols[k] = (mapa[i.id].cols[k]||0)+m.qtd;
+      mapa[i.id].cols[m.destino] = (mapa[i.id].cols[m.destino]||0)+m.qtd;
       mapa[i.id].total += m.qtd;
     });
     linhas = Object.values(mapa).sort((a,b)=>a.nome.localeCompare(b.nome))
-      .map(r=>[r.nome, r.un, ...REFS.map(k=>r.cols[k]?fmt(r.cols[k]):'—'), r.cols['Outros']?fmt(r.cols['Outros']):'—', fmt(r.total)]);
+      .map(r=>[r.nome, r.un, ...REFS.map(k=>r.cols[k]?fmt(r.cols[k]):'—'), fmt(r.total)]);
   }
 
   if(tipo==='movimento'){
     titulo = 'Entradas e saídas por item';
     head = ['Item','Unidade','Entrou','Saiu','Saldo atual','Mínimo'];
     const mapa = {};
-    movs.forEach(m=>{
+    movs.filter(naoECorrecao).forEach(m=>{
       const i = item(m.itemId);
       mapa[i.id] = mapa[i.id] || {i, ent:0, sai:0};
       m.tipo==='entrada' ? mapa[i.id].ent += m.qtd : mapa[i.id].sai += m.qtd;
@@ -1096,14 +1105,24 @@ function renderRelatorio(){
       .map(m=>{const i=item(m.itemId); return [dataBR(m.data), i.nome, m.marca||'—', dataBR(m.validade), fmt(m.qtd)+' '+i.un, m.destino];});
   }
 
+  if(tipo==='correcoes'){
+    titulo = 'Correções de lançamento';
+    head = ['Data','Item','O que aconteceu','Marca','Validade','Quantidade'];
+    linhas = movs.filter(m=>!naoECorrecao(m))
+      .sort((a,b)=>b.data.localeCompare(a.data))
+      .map(m=>{const i=item(m.itemId); if(!i) return null; return [dataBR(m.data), i.nome,
+        m.tipo==='entrada'?'Reaberto com dado corrigido':'Fechado para corrigir', m.marca||'—', dataBR(m.validade), fmt(m.qtd)+' '+i.un];})
+      .filter(Boolean);
+  }
+
   if(tipo==='parado'){
     titulo = 'Itens sem movimento no período';
     head = ['Item','Categoria','Saldo','Unidade','Última movimentação'];
-    const mexeu = new Set(movs.map(m=>m.itemId));
+    const mexeu = new Set(movs.filter(naoECorrecao).map(m=>m.itemId));
     linhas = DB.itens.filter(i=>(!cat||i.cat===cat) && !mexeu.has(i.id) && saldo(i.id)>0)
       .sort((a,b)=>a.nome.localeCompare(b.nome))
       .map(i=>{
-        const ms = DB.movs.filter(m=>m.itemId===i.id).sort((a,b)=>b.data.localeCompare(a.data));
+        const ms = DB.movs.filter(m=>m.itemId===i.id && naoECorrecao(m)).sort((a,b)=>b.data.localeCompare(a.data));
         return [i.nome, nomeCat(i.cat), fmt(saldo(i.id)), i.un, ms.length?dataBR(ms[0].data):'Nunca'];
       });
   }
@@ -1251,7 +1270,7 @@ function svgLinha(pontos, opts){
 
 function calcularABC(){
   const contagem = {};
-  DB.movs.filter(m=>m.tipo==='saida').forEach(m=>{ contagem[m.itemId] = (contagem[m.itemId]||0)+1; });
+  DB.movs.filter(m=>m.tipo==='saida' && naoECorrecao(m)).forEach(m=>{ contagem[m.itemId] = (contagem[m.itemId]||0)+1; });
   const linhas = Object.entries(contagem).map(([itemId,qtd])=>({item:item(itemId), qtd}))
     .filter(l=>l.item).sort((a,b)=>b.qtd-a.qtd);
   const total = linhas.reduce((s,l)=>s+l.qtd,0);
@@ -1265,7 +1284,7 @@ function calcularABC(){
 }
 function calcularPerdas(){
   const recebido = {}, perdido = {};
-  DB.movs.forEach(m=>{
+  DB.movs.filter(naoECorrecao).forEach(m=>{
     if(m.tipo==='entrada') recebido[m.itemId] = (recebido[m.itemId]||0)+m.qtd;
     else if(/Descarte|Perda/i.test(m.destino)) perdido[m.itemId] = (perdido[m.itemId]||0)+m.qtd;
   });
@@ -1280,7 +1299,7 @@ function calcularCobertura(){
   const limite = new Date(); limite.setDate(limite.getDate()-30);
   const limiteStr = limite.toISOString().slice(0,10);
   const consumo = {};
-  DB.movs.filter(m=>m.tipo==='saida' && m.data>=limiteStr).forEach(m=>{ consumo[m.itemId]=(consumo[m.itemId]||0)+m.qtd; });
+  DB.movs.filter(m=>m.tipo==='saida' && m.data>=limiteStr && naoECorrecao(m)).forEach(m=>{ consumo[m.itemId]=(consumo[m.itemId]||0)+m.qtd; });
   return DB.itens.filter(i=>saldo(i.id)>1e-7).map(i=>{
     const mediaDiaria = (consumo[i.id]||0)/30;
     return mediaDiaria>0 ? {item:i, dias: saldo(i.id)/mediaDiaria} : null;
@@ -1289,10 +1308,12 @@ function calcularCobertura(){
 function calcularDiaSemana(){
   const nomes = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
   const contagem = [0,0,0,0,0,0,0];
-  DB.movs.filter(m=>m.tipo==='saida' && m.data).forEach(m=>{ contagem[new Date(m.data+'T00:00:00').getDay()]++; });
+  DB.movs.filter(m=>m.tipo==='saida' && m.data && naoECorrecao(m)).forEach(m=>{ contagem[new Date(m.data+'T00:00:00').getDay()]++; });
   return [1,2,3,4,5,6,0].map(i=>({label:nomes[i], valor:contagem[i]}));
 }
 function calcularSerieSaldo(itemId){
+  // Aqui, ao contrário dos outros cálculos, a correção FICA — é a história
+  // real do saldo, incluindo o ajuste que aconteceu.
   const movs = DB.movs.filter(m=>m.itemId===itemId && m.data).slice().sort((a,b)=>a.data.localeCompare(b.data));
   const porDia = {}; let acc = 0;
   movs.forEach(m=>{ acc += m.tipo==='entrada'? m.qtd : -m.qtd; porDia[m.data] = Math.round(acc*1000)/1000; });
@@ -1301,7 +1322,7 @@ function calcularSerieSaldo(itemId){
 function calcularParados(){
   const hojeD = new Date(hoje()+'T00:00:00');
   return DB.itens.filter(i=>saldo(i.id)>1e-7).map(i=>{
-    const movs = DB.movs.filter(m=>m.itemId===i.id && m.data);
+    const movs = DB.movs.filter(m=>m.itemId===i.id && m.data && naoECorrecao(m));
     if(!movs.length) return null;
     const ultima = movs.reduce((max,m)=>m.data>max?m.data:max, movs[0].data);
     const dias = Math.round((hojeD - new Date(ultima+'T00:00:00'))/86400000);
