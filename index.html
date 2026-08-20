@@ -138,6 +138,13 @@
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:60;background:var(--ink);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:14px;box-shadow:0 6px 18px rgba(0,0,0,.25);max-width:92vw}
   .toast.erro{background:var(--alerta)}
   .rodape{font-size:12px;color:var(--sub);text-align:center;padding:0 16px 24px}
+
+  #analises svg{display:block;max-width:100%;height:auto}
+  #analises svg text{font-family:'Source Sans 3',sans-serif}
+  .mini-resumo{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px;font-size:13px}
+  .mini-resumo .chave{display:inline-flex;align-items:center;gap:6px}
+  .mini-resumo .bola{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .sem-dado{color:var(--sub);font-size:13.5px;padding:10px 0}
   .mais{text-align:center;padding:12px;color:var(--sub);font-size:13.5px}
 
   @media (max-width:640px){
@@ -176,6 +183,7 @@
   <button role="tab" id="tab-itens" aria-selected="false" onclick="irPara('itens')">Itens</button>
   <button role="tab" id="tab-validade" aria-selected="false" onclick="irPara('validade')">Validade</button>
   <button role="tab" id="tab-relatorios" aria-selected="false" onclick="irPara('relatorios')">Relatórios</button>
+  <button role="tab" id="tab-analises" aria-selected="false" onclick="irPara('analises')">Análises</button>
 </div></nav>
 
 <main>
@@ -191,6 +199,11 @@
         <span class="seta" aria-hidden="true">›</span><span class="n" id="k-vencendo">0</span><span class="l">Vencem em 7 dias</span>
       </button>
       <div class="kpi-detalhe" id="kd-vencendo" hidden></div>
+
+      <button type="button" class="kpi vencido" id="kpi-negativo" aria-expanded="false" onclick="toggleKpi('negativo')">
+        <span class="seta" aria-hidden="true">›</span><span class="n" id="k-negativo">0</span><span class="l">Saldo negativo (corrigir na planilha)</span>
+      </button>
+      <div class="kpi-detalhe" id="kd-negativo" hidden></div>
 
       <button type="button" class="kpi baixo" id="kpi-baixo" aria-expanded="false" onclick="toggleKpi('baixo')">
         <span class="seta" aria-hidden="true">›</span><span class="n" id="k-baixo">0</span><span class="l">Abaixo do mínimo</span>
@@ -340,6 +353,58 @@
         <button class="btn small" onclick="restaurarCatalogo()">Restaurar catálogo da planilha</button>
         <button class="btn small" onclick="limparMovs()">Apagar movimentos</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ANÁLISES -->
+  <section id="analises" hidden>
+    <div class="card">
+      <h2>Análises</h2>
+      <p class="hint">Tudo aqui é calculado a partir do que já foi lançado — nenhum campo novo pra preencher. Serve para entender padrões, não para o dia a dia.</p>
+    </div>
+
+    <div class="card">
+      <h2>Itens mais movimentados</h2>
+      <p class="hint">Classificação clássica ABC: poucos itens costumam concentrar a maior parte do trabalho. Aqui a régua é o número de retiradas registradas (não dá para usar valor em R$, já que o sistema não guarda custo). Classe A merece o mínimo bem calibrado e conferência mais frequente; Classe C pode ficar mais solta.</p>
+      <div id="resumo-abc" class="mini-resumo"></div>
+      <div id="chart-abc"></div>
+    </div>
+
+    <div class="card">
+      <h2>Onde está a perda</h2>
+      <p class="hint">Percentual do que foi recebido de cada item que virou descarte ou perda. Mostra os 10 piores.</p>
+      <div id="chart-perdas"></div>
+    </div>
+
+    <div class="card">
+      <h2>Vai faltar em quantos dias</h2>
+      <p class="hint">Saldo atual dividido pelo consumo médio dos últimos 30 dias. Os 10 itens com menos fôlego, na frente da fila de compra — mais direto que só olhar se já está abaixo do mínimo.</p>
+      <div id="chart-cobertura"></div>
+    </div>
+
+    <div class="card">
+      <h2>Movimento por dia da semana</h2>
+      <p class="hint">Em quais dias mais se retira estoque. Ajuda a calibrar porção e evitar sobra ou falta que se repete sempre no mesmo dia.</p>
+      <div id="chart-diasemana"></div>
+    </div>
+
+    <div class="card">
+      <h2>Evolução de um item</h2>
+      <p class="hint">Escolha um item para ver como o saldo dele andou ao longo do tempo.</p>
+      <select id="an-item" onchange="renderSerieItem()" style="margin-bottom:10px"></select>
+      <div id="chart-serie"></div>
+    </div>
+
+    <div class="card">
+      <h2>Parados há mais tempo</h2>
+      <p class="hint">Itens com saldo em estoque mas sem nenhuma entrada ou saída há 7 dias ou mais. Pode ser item esquecido, ou fora de uso.</p>
+      <div id="chart-parados"></div>
+    </div>
+
+    <div class="card">
+      <h2>Onde está o estoque</h2>
+      <p class="hint">Quantos itens com saldo existem em cada categoria.</p>
+      <div id="chart-categoria"></div>
     </div>
   </section>
 </main>
@@ -603,7 +668,7 @@ function tagValidade(v){
 /* ---------- navegação ---------- */
 function irPara(t){
   telaAtual = t;
-  ['painel','saida','entrada','itens','validade','relatorios'].forEach(a=>{
+  ['painel','saida','entrada','itens','validade','relatorios','analises'].forEach(a=>{
     document.getElementById(a).hidden = a!==t;
     document.getElementById('tab-'+a).setAttribute('aria-selected', a===t?'true':'false');
   });
@@ -813,14 +878,21 @@ function renderPainel(){
     .sort((a,b)=>a.validade.localeCompare(b.validade));
   const baixos = DB.itens.filter(i=>i.min>0 && saldo(i.id)<i.min)
     .sort((a,b)=>(saldo(a.id)/a.min)-(saldo(b.id)/b.min));
+  const negativos = DB.itens.filter(i=>saldo(i.id)<-1e-6)
+    .sort((a,b)=>saldo(a.id)-saldo(b.id));
   const movsHoje = DB.movs.filter(m=>m.data===hoje()).slice().reverse();
   const itensComSaldo = DB.itens.filter(i=>saldo(i.id)>1e-7).sort((a,b)=>a.nome.localeCompare(b.nome));
 
   document.getElementById('k-vencido').textContent = vencidos.length;
   document.getElementById('k-vencendo').textContent = vencendo.length;
+  document.getElementById('k-negativo').textContent = negativos.length;
   document.getElementById('k-baixo').textContent = baixos.length;
   document.getElementById('k-hoje').textContent = movsHoje.length;
   document.getElementById('k-itens').textContent = itensComSaldo.length;
+
+  preencherDetalheKpi('negativo', negativos.length, negativos.map(i=>({
+    nome:i.nome, info:'saldo impossível — sobrou um lançamento antigo ou duplicado no Sheets',
+    valor:`${fmt(saldo(i.id))} ${i.un}`})));
 
   preencherDetalheKpi('vencido', vencidos.length, vencidos.map(l=>{
     const i = item(l.itemId);
@@ -843,6 +915,8 @@ function renderPainel(){
     nome:i.nome, info:nomeCat(i.cat), valor:`${fmt(saldo(i.id))} ${i.un}`})), 40);
 
   const b = [];
+  negativos.forEach(i=>b.push(`<div class="alerta-linha a-vencido"><b>${esc(i.nome)}</b> — saldo ${fmt(saldo(i.id))} ${i.un}, o que é impossível. Sobrou um lançamento antigo ou duplicado no Sheets: abra a
+    <a href="${SHEETS_PLANILHA_URL}" target="_blank" rel="noopener">planilha</a> (aba Movimentos), filtre por "${esc(i.nome)}" e corrija ou apague o lançamento errado.</div>`));
   vencidos.forEach(l=>b.push(`<div class="alerta-linha a-vencido"><b>${esc(item(l.itemId).nome)}</b> — ${esc(l.marca)}, ${fmt(l.qtd)} ${item(l.itemId).un}, vencido em ${dataBR(l.validade)}.
     <button class="btn small" onclick="descartarLote('${l.id}')">Baixar descarte</button></div>`));
   vencendo.forEach(l=>b.push(`<div class="alerta-linha a-vencendo"><b>${esc(item(l.itemId).nome)}</b> — ${esc(l.marca)}, ${fmt(l.qtd)} ${item(l.itemId).un}, vence em ${diasAte(l.validade)} dia(s). Use no cardápio da semana.</div>`));
@@ -1045,6 +1119,187 @@ async function restaurarCatalogo(){
   aviso(n ? `${n} item(ns) do catálogo restaurado(s).` : 'O catálogo já está completo.');
 }
 
+/* ---------- análises (gráficos SVG, sem dependências externas) ---------- */
+const CORES_ABC = {A:'#3B7392', B:'#DFA13C', C:'rgba(31,43,37,.35)'};
+
+function svgBarrasH(dados, opts){
+  opts = opts || {};
+  if(!dados.length) return '<div class="sem-dado">Ainda não há dado suficiente para calcular isso.</div>';
+  const largura = 620, margEsq = opts.margEsq||168, margDir = 74, alturaLinha = 24, espaco = 8;
+  const maxValor = Math.max(1, ...dados.map(d=>d.valor));
+  const larguraBarra = largura - margEsq - margDir;
+  const altura = dados.length*(alturaLinha+espaco) + espaco;
+  let svg = `<svg viewBox="0 0 ${largura} ${altura}" role="img" aria-label="${esc(opts.aria||'gráfico de barras')}">`;
+  dados.forEach((d,i)=>{
+    const y = espaco + i*(alturaLinha+espaco);
+    const w = Math.max(2, (d.valor/maxValor)*larguraBarra);
+    const cor = d.cor || 'var(--verde)';
+    svg += `<text x="${margEsq-8}" y="${y+alturaLinha*0.68}" text-anchor="end" font-size="12.5" fill="var(--ink)">${esc(d.label)}</text>`;
+    svg += `<rect x="${margEsq}" y="${y}" width="${w}" height="${alturaLinha}" rx="3" fill="${cor}"/>`;
+    svg += `<text x="${margEsq+w+7}" y="${y+alturaLinha*0.68}" font-size="12.5" font-family="Roboto Mono, monospace" fill="var(--ink)">${esc(d.rotulo!=null?d.rotulo:d.valor)}</text>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+
+function svgBarrasV(dados, opts){
+  opts = opts || {};
+  if(!dados.length) return '<div class="sem-dado">Ainda não há dado suficiente para calcular isso.</div>';
+  const largura = 620, altura = 220, margInf = 34, margSup = 14, espacoLateral = 20;
+  const maxValor = Math.max(1, ...dados.map(d=>d.valor));
+  const larguraUtil = largura - espacoLateral*2;
+  const larguraBarra = Math.min(64, larguraUtil/dados.length - 14);
+  const alturaUtil = altura - margInf - margSup;
+  let svg = `<svg viewBox="0 0 ${largura} ${altura}" role="img" aria-label="${esc(opts.aria||'gráfico de barras')}">`;
+  dados.forEach((d,i)=>{
+    const passo = larguraUtil/dados.length;
+    const cx = espacoLateral + passo*i + passo/2;
+    const h = Math.max(2, (d.valor/maxValor)*alturaUtil);
+    const y = margSup + (alturaUtil-h);
+    svg += `<rect x="${cx-larguraBarra/2}" y="${y}" width="${larguraBarra}" height="${h}" rx="3" fill="${d.cor||'var(--verde)'}"/>`;
+    svg += `<text x="${cx}" y="${y-6}" text-anchor="middle" font-size="12" font-family="Roboto Mono, monospace" fill="var(--ink)">${esc(d.rotulo!=null?d.rotulo:d.valor)}</text>`;
+    svg += `<text x="${cx}" y="${altura-margInf+18}" text-anchor="middle" font-size="12.5" fill="var(--ink)">${esc(d.label)}</text>`;
+  });
+  svg += `</svg>`;
+  return svg;
+}
+
+function svgLinha(pontos, opts){
+  opts = opts || {};
+  if(pontos.length<2) return '<div class="sem-dado">Precisa de pelo menos dois lançamentos desse item para desenhar a evolução.</div>';
+  const largura = 620, altura = 200, margEsq = 54, margDir = 16, margSup = 16, margInf = 32;
+  const valores = pontos.map(p=>p.valor);
+  let minV = Math.min(0, ...valores), maxV = Math.max(...valores);
+  if(minV===maxV) maxV = minV+1;
+  const larguraUtil = largura-margEsq-margDir, alturaUtil = altura-margSup-margInf;
+  const x = i => margEsq + (i/(pontos.length-1))*larguraUtil;
+  const y = v => margSup + alturaUtil - ((v-minV)/(maxV-minV))*alturaUtil;
+  const pts = pontos.map((p,i)=>`${x(i).toFixed(1)},${y(p.valor).toFixed(1)}`).join(' ');
+  let svg = `<svg viewBox="0 0 ${largura} ${altura}" role="img" aria-label="${esc(opts.aria||'evolução ao longo do tempo')}">`;
+  svg += `<line x1="${margEsq}" y1="${y(0).toFixed(1)}" x2="${largura-margDir}" y2="${y(0).toFixed(1)}" stroke="var(--linha)" stroke-width="1"/>`;
+  svg += `<text x="${margEsq-8}" y="${y(maxV).toFixed(1)}" text-anchor="end" font-size="11.5" font-family="Roboto Mono, monospace" fill="var(--sub)">${esc(fmt(maxV))}</text>`;
+  svg += `<text x="${margEsq-8}" y="${y(minV).toFixed(1)}" text-anchor="end" font-size="11.5" font-family="Roboto Mono, monospace" fill="var(--sub)">${esc(fmt(minV))}</text>`;
+  svg += `<polyline points="${pts}" fill="none" stroke="var(--frio)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  pontos.forEach((p,i)=>{ svg += `<circle cx="${x(i).toFixed(1)}" cy="${y(p.valor).toFixed(1)}" r="3" fill="var(--frio)"/>`; });
+  svg += `<text x="${x(0).toFixed(1)}" y="${altura-8}" font-size="11.5" fill="var(--sub)">${esc(dataBR(pontos[0].data))}</text>`;
+  svg += `<text x="${x(pontos.length-1).toFixed(1)}" y="${altura-8}" text-anchor="end" font-size="11.5" fill="var(--sub)">${esc(dataBR(pontos[pontos.length-1].data))}</text>`;
+  svg += `</svg>`;
+  return svg;
+}
+
+function calcularABC(){
+  const contagem = {};
+  DB.movs.filter(m=>m.tipo==='saida').forEach(m=>{ contagem[m.itemId] = (contagem[m.itemId]||0)+1; });
+  const linhas = Object.entries(contagem).map(([itemId,qtd])=>({item:item(itemId), qtd}))
+    .filter(l=>l.item).sort((a,b)=>b.qtd-a.qtd);
+  const total = linhas.reduce((s,l)=>s+l.qtd,0);
+  let acumulado = 0;
+  linhas.forEach(l=>{
+    acumulado += l.qtd;
+    const pct = total ? (acumulado/total*100) : 0;
+    l.classe = pct<=80 ? 'A' : pct<=95 ? 'B' : 'C';
+  });
+  return linhas;
+}
+function calcularPerdas(){
+  const recebido = {}, perdido = {};
+  DB.movs.forEach(m=>{
+    if(m.tipo==='entrada') recebido[m.itemId] = (recebido[m.itemId]||0)+m.qtd;
+    else if(/Descarte|Perda/i.test(m.destino)) perdido[m.itemId] = (perdido[m.itemId]||0)+m.qtd;
+  });
+  return Object.keys(perdido).map(itemId=>{
+    const i = item(itemId); if(!i) return null;
+    const rec = recebido[itemId]||0, perd = perdido[itemId];
+    const base = rec>0 ? rec : perd;
+    return {item:i, perdido:perd, pct: base>0 ? (perd/base*100) : 0};
+  }).filter(Boolean).sort((a,b)=>b.pct-a.pct);
+}
+function calcularCobertura(){
+  const limite = new Date(); limite.setDate(limite.getDate()-30);
+  const limiteStr = limite.toISOString().slice(0,10);
+  const consumo = {};
+  DB.movs.filter(m=>m.tipo==='saida' && m.data>=limiteStr).forEach(m=>{ consumo[m.itemId]=(consumo[m.itemId]||0)+m.qtd; });
+  return DB.itens.filter(i=>saldo(i.id)>1e-7).map(i=>{
+    const mediaDiaria = (consumo[i.id]||0)/30;
+    return mediaDiaria>0 ? {item:i, dias: saldo(i.id)/mediaDiaria} : null;
+  }).filter(Boolean).sort((a,b)=>a.dias-b.dias);
+}
+function calcularDiaSemana(){
+  const nomes = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const contagem = [0,0,0,0,0,0,0];
+  DB.movs.filter(m=>m.tipo==='saida' && m.data).forEach(m=>{ contagem[new Date(m.data+'T00:00:00').getDay()]++; });
+  return [1,2,3,4,5,6,0].map(i=>({label:nomes[i], valor:contagem[i]}));
+}
+function calcularSerieSaldo(itemId){
+  const movs = DB.movs.filter(m=>m.itemId===itemId && m.data).slice().sort((a,b)=>a.data.localeCompare(b.data));
+  const porDia = {}; let acc = 0;
+  movs.forEach(m=>{ acc += m.tipo==='entrada'? m.qtd : -m.qtd; porDia[m.data] = Math.round(acc*1000)/1000; });
+  return Object.entries(porDia).map(([data,valor])=>({data,valor}));
+}
+function calcularParados(){
+  const hojeD = new Date(hoje()+'T00:00:00');
+  return DB.itens.filter(i=>saldo(i.id)>1e-7).map(i=>{
+    const movs = DB.movs.filter(m=>m.itemId===i.id && m.data);
+    if(!movs.length) return null;
+    const ultima = movs.reduce((max,m)=>m.data>max?m.data:max, movs[0].data);
+    const dias = Math.round((hojeD - new Date(ultima+'T00:00:00'))/86400000);
+    return dias>=7 ? {item:i, dias} : null;
+  }).filter(Boolean).sort((a,b)=>b.dias-a.dias);
+}
+function calcularDistribuicaoCategoria(){
+  const contagem = {};
+  DB.itens.filter(i=>saldo(i.id)>1e-7).forEach(i=>{ contagem[i.cat]=(contagem[i.cat]||0)+1; });
+  return CATS.map(c=>({label:c.nome, valor:contagem[c.id]||0})).filter(d=>d.valor>0).sort((a,b)=>b.valor-a.valor);
+}
+
+function renderAnalises(){
+  const abc = calcularABC();
+  const top = abc.slice(0,15);
+  document.getElementById('chart-abc').innerHTML = svgBarrasH(top.map(l=>({
+    label:l.item.nome, valor:l.qtd, rotulo:`${l.qtd}× · ${l.classe}`, cor:CORES_ABC[l.classe]
+  })), {aria:'itens mais retirados, classificados em A, B e C'});
+  const conta = {A:0,B:0,C:0}; abc.forEach(l=>conta[l.classe]++);
+  document.getElementById('resumo-abc').innerHTML = ['A','B','C'].map(c=>
+    `<span class="chave"><span class="bola" style="background:${CORES_ABC[c]}"></span>Classe ${c}: ${conta[c]} ${conta[c]===1?'item':'itens'}</span>`).join('');
+
+  const perdas = calcularPerdas().slice(0,10);
+  document.getElementById('chart-perdas').innerHTML = svgBarrasH(perdas.map(l=>({
+    label:l.item.nome, valor:l.pct, rotulo:l.pct.toFixed(1)+'%', cor:'var(--alerta)'
+  })), {aria:'itens com maior percentual de perda'});
+
+  const cobertura = calcularCobertura().slice(0,10);
+  document.getElementById('chart-cobertura').innerHTML = svgBarrasH(cobertura.map(l=>({
+    label:l.item.nome, valor:l.dias,
+    rotulo: l.dias<1 ? '<1 dia' : Math.round(l.dias)+'d',
+    cor: l.dias<3?'var(--alerta)':l.dias<7?'var(--sinal)':'var(--ok)'
+  })), {aria:'dias de estoque restantes por item'});
+
+  document.getElementById('chart-diasemana').innerHTML = svgBarrasV(calcularDiaSemana().map(d=>({
+    label:d.label, valor:d.valor, rotulo:d.valor, cor:'var(--frio)'
+  })), {aria:'quantidade de retiradas por dia da semana'});
+
+  document.getElementById('chart-parados').innerHTML = svgBarrasH(calcularParados().slice(0,10).map(l=>({
+    label:l.item.nome, valor:l.dias, rotulo:l.dias+'d', cor:'rgba(31,43,37,.4)'
+  })), {aria:'itens sem movimento há mais tempo'});
+
+  document.getElementById('chart-categoria').innerHTML = svgBarrasH(calcularDistribuicaoCategoria().map(d=>({
+    label:d.label, valor:d.valor, rotulo:d.valor+(d.valor===1?' item':' itens'), cor:'var(--verde)'
+  })), {aria:'quantidade de itens com saldo por categoria'});
+
+  const selItem = document.getElementById('an-item');
+  const valorAtual = selItem.value;
+  selItem.innerHTML = DB.itens.slice().sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(i=>`<option value="${i.id}">${esc(i.nome)}</option>`).join('');
+  if(valorAtual && DB.itens.some(i=>i.id===valorAtual)) selItem.value = valorAtual;
+  renderSerieItem();
+}
+function renderSerieItem(){
+  const itemId = document.getElementById('an-item').value;
+  if(!itemId){ document.getElementById('chart-serie').innerHTML = '<div class="sem-dado">Cadastre um item primeiro.</div>'; return; }
+  document.getElementById('chart-serie').innerHTML = svgLinha(calcularSerieSaldo(itemId),
+    {aria:'evolução do saldo de '+((item(itemId)||{}).nome||'')});
+}
+
 /* ---------- render geral ---------- */
 function render(){
   renderPainel();
@@ -1053,6 +1308,7 @@ function render(){
   if(telaAtual==='itens') renderItens();
   if(telaAtual==='validade') renderValidade();
   if(telaAtual==='relatorios') renderRelatorio();
+  if(telaAtual==='analises') renderAnalises();
   barra();
 }
 (async function inicio(){
