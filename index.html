@@ -124,6 +124,8 @@
   .t-cat{color:var(--sub);border-color:var(--linha);background:rgba(31,43,37,.04)}
 
   .alerta-linha{border-left:4px solid transparent;padding-left:9px;margin-bottom:9px}
+  .linha-edicao{background:var(--verde-suave)}
+  .linha-edicao input{padding:5px 7px}
   .a-vencido{border-left-color:var(--alerta)} .a-vencendo{border-left-color:var(--sinal)} .a-baixo{border-left-color:var(--frio)}
 
   .vazio{text-align:center;padding:28px 16px;border:1px dashed var(--linha);background:var(--verde-suave);border-radius:var(--r);color:var(--sub)}
@@ -309,7 +311,7 @@
       <p class="hint">Cada entrada com marca e validade vira uma linha. Ordenado pelo que vence antes.</p>
       <div class="chips" id="chips-validade"></div>
       <div class="tbl-scroll"><table>
-        <thead><tr><th>Item</th><th>Marca</th><th>Validade</th><th class="num">Dias</th><th class="num">Saldo</th><th></th></tr></thead>
+        <thead><tr><th>Item</th><th>Marca</th><th>Validade</th><th class="num">Dias</th><th class="num">Saldo</th><th colspan="2"></th></tr></thead>
         <tbody id="tb-validade"></tbody>
       </table></div>
     </div>
@@ -783,15 +785,29 @@ function renderEntrada(){
   if(lista.length>120) el.innerHTML += `<div class="mais">Mostrando 120 de ${lista.length}. Refine a busca.</div>`;
   barra();
 }
+function validarDataSuspeita(dataStr, rotulo){
+  if(!dataStr) return true;
+  const d = diasAte(dataStr);
+  if(d===null) return true;
+  if(d<0){
+    return confirm(`A validade digitada para ${rotulo} já passou: ${dataBR(dataStr)} (${-d} dia${-d===1?'':'s'} atrás).\n\nSe foi engano no dia, mês ou ANO, toque Cancelar e corrija.\n\nToque OK só se tiver certeza que essa data está certa.`);
+  }
+  if(d>365*3){
+    return confirm(`A validade digitada para ${rotulo} é daqui a mais de 3 anos: ${dataBR(dataStr)}.\n\nSe foi engano no ano (ex.: digitou 2029 em vez de 2026), toque Cancelar e corrija.\n\nToque OK só se tiver certeza que essa data está certa.`);
+  }
+  return true;
+}
+
 async function salvarEntradas(){
   const data = document.getElementById('e-data').value || hoje();
   const forn = document.getElementById('e-forn').value.trim();
   const nf = document.getElementById('e-nf').value.trim();
   const resp = document.getElementById('e-resp').value.trim();
-  const faltaVal = []; let ok = 0; const criados = [];
+  const faltaVal = []; const dataDuvidosa = []; let ok = 0; const criados = [];
   for(const [itemId, p] of Object.entries(pendentes.entrada)){
     const i = item(itemId); if(!i || !(p.qtd>0)) continue;
     if(PERECIVEIS.includes(i.cat) && !p.validade){ faltaVal.push(i.nome); continue; }
+    if(p.validade && !validarDataSuspeita(p.validade, i.nome)){ dataDuvidosa.push(i.nome); continue; }
     const lote = {id:id(), itemId, marca:p.marca||'Sem marca', validade:p.validade||'', qtd:p.qtd, entrada:data, forn, nf};
     DB.lotes.push(lote);
     const mov = {id:id(), tipo:'entrada', itemId, loteId:lote.id, marca:lote.marca, validade:lote.validade,
@@ -800,7 +816,8 @@ async function salvarEntradas(){
     delete pendentes.entrada[itemId]; ok++;
   }
   await salvar(); render();
-  if(faltaVal.length) aviso(`${ok} recebido(s). Falta validade em: ${faltaVal.slice(0,3).join(', ')}`, true);
+  if(dataDuvidosa.length) aviso(`${ok} recebido(s). Confira a validade de: ${dataDuvidosa.slice(0,3).join(', ')} — ficou pendente, sem salvar.`, true);
+  else if(faltaVal.length) aviso(`${ok} recebido(s). Falta validade em: ${faltaVal.slice(0,3).join(', ')}`, true);
   else aviso(`${ok} item(ns) recebido(s).`);
   await enviarESincronizar(criados);
 }
@@ -845,6 +862,7 @@ function renderItens(){
 }
 
 /* ---------- validade ---------- */
+let loteEmEdicao = null;
 function renderValidade(){
   chips('chips-validade','validade');
   const linhas = DB.lotes.filter(l=>l.qtd>1e-7)
@@ -853,12 +871,56 @@ function renderValidade(){
       if(a.validade) return -1; if(b.validade) return 1; return 0; });
   document.getElementById('tb-validade').innerHTML = linhas.map(l=>{
     const i = item(l.itemId), d = diasAte(l.validade);
+    if(l.id===loteEmEdicao){
+      return `<tr class="linha-edicao">
+        <td>${esc(i.nome)}</td>
+        <td><input id="ed-marca" value="${esc(l.marca)}" placeholder="Marca" aria-label="Marca"></td>
+        <td><input id="ed-validade" type="date" value="${l.validade}" aria-label="Validade"></td>
+        <td class="num" colspan="2"><input id="ed-qtd" type="number" min="0" step="0.001" value="${l.qtd}"
+          style="width:90px;text-align:right" aria-label="Quantidade"> ${i.un}</td>
+        <td colspan="2" style="white-space:nowrap">
+          <button class="btn small primary" onclick="salvarEdicaoLote('${l.id}')">Salvar</button>
+          <button class="btn small" onclick="loteEmEdicao=null;renderValidade()">Cancelar</button></td>
+      </tr>`;
+    }
     const marca = l.marca ? esc(l.marca)
       : `<span style="color:var(--sub);font-style:italic">Sem marca registrada</span>`;
     return `<tr><td>${esc(i.nome)}</td><td>${marca}</td><td>${dataBR(l.validade)}</td>
       <td class="num">${tagValidade(l.validade)}</td><td class="num">${fmt(l.qtd)} ${i.un}</td>
+      <td style="white-space:nowrap"><button class="btn small" onclick="loteEmEdicao='${l.id}';renderValidade()">Editar</button></td>
       <td><button class="btn small" onclick="descartarLote('${l.id}')">Descartar</button></td></tr>`;
-  }).join('') || '<tr><td colspan="6" style="color:var(--sub)">Nenhum lote com saldo nesta categoria.</td></tr>';
+  }).join('') || '<tr><td colspan="7" style="color:var(--sub)">Nenhum lote com saldo nesta categoria.</td></tr>';
+}
+async function salvarEdicaoLote(loteId){
+  const l = DB.lotes.find(x=>x.id===loteId); if(!l) return;
+  const i = item(l.itemId); if(!i) return;
+  const novaMarca = document.getElementById('ed-marca').value.trim() || 'Sem marca';
+  const novaValidade = document.getElementById('ed-validade').value || '';
+  const novaQtd = parseFloat(document.getElementById('ed-qtd').value);
+  if(!(novaQtd>=0)) return aviso('Quantidade inválida.', true);
+  if(novaValidade && !validarDataSuspeita(novaValidade, i.nome)) return; // ela cancelou, mantém em edição
+  const semMudanca = novaMarca===l.marca && novaValidade===l.validade && Math.abs(novaQtd-l.qtd)<1e-7;
+  if(semMudanca){ loteEmEdicao = null; renderValidade(); return; }
+
+  // Fecha o lote antigo (com o dado errado) e abre um novo corrigido — em vez de
+  // apagar história, fica registrado como correção, igual a qualquer outro lançamento.
+  const movsCorrecao = [];
+  const fechamento = {id:id(), tipo:'saida', itemId:l.itemId, loteId:l.id, marca:l.marca, validade:l.validade,
+    qtd:l.qtd, data:hoje(), destino:'Correção de lançamento', resp:'', obs:'Fechado para corrigir marca/validade/quantidade'};
+  DB.movs.push(fechamento); movsCorrecao.push(fechamento);
+  l.qtd = 0;
+
+  if(novaQtd>1e-7){
+    const novoLote = {id:id(), itemId:l.itemId, marca:novaMarca, validade:novaValidade, qtd:novaQtd, entrada:l.entrada||hoje(), forn:l.forn||''};
+    DB.lotes.push(novoLote);
+    const abertura = {id:id(), tipo:'entrada', itemId:l.itemId, loteId:novoLote.id, marca:novaMarca, validade:novaValidade,
+      qtd:novaQtd, data:hoje(), destino:'Correção de lançamento', resp:'', obs:'Reaberto com o dado corrigido'};
+    DB.movs.push(abertura); movsCorrecao.push(abertura);
+  }
+  loteEmEdicao = null;
+  await salvar(); render();
+  aviso('Lote corrigido.');
+  await enviarESincronizar(movsCorrecao);
 }
 async function descartarLote(loteId){
   const l = DB.lotes.find(x=>x.id===loteId); if(!l) return;
